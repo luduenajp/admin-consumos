@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+from datetime import date
+from typing import Optional
+
+from sqlmodel import Session, col, func, select
+
+from app.models import (
+    Card,
+    CurrencyCode,
+    FxRate,
+    InstallmentSchedule,
+    Person,
+    Purchase,
+    PurchasePayer,
+    ShareType,
+)
+from app.schemas import CardCreate, FxRateUpsert, PersonCreate, PurchaseCreate
+from app.utils_dates import add_months, to_year_month
+
+
+def create_person(*, session: Session, payload: PersonCreate) -> Person:
+    person = Person(name=payload.name)
+    session.add(person)
+    session.commit()
+    session.refresh(person)
+    return person
+
+
+def list_people(*, session: Session) -> list[Person]:
+    return list(session.exec(select(Person).order_by(Person.name)))
+
+
+def create_card(*, session: Session, payload: CardCreate) -> Card:
+    card = Card(
+        name=payload.name,
+        provider=payload.provider,
+        owner_person_id=payload.owner_person_id,
+        last4=payload.last4,
+    )
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return card
+
+
+def list_cards(*, session: Session) -> list[Card]:
+    return list(session.exec(select(Card).order_by(Card.name)))
+
+
+def upsert_fx_rate(*, session: Session, payload: FxRateUpsert) -> FxRate:
+    stmt = select(FxRate).where(
+        FxRate.year_month == payload.year_month,
+        FxRate.currency == payload.currency,
+    )
+    existing = session.exec(stmt).first()
+    if existing is None:
+        fx = FxRate(
+            year_month=payload.year_month,
+            currency=payload.currency,
+            rate_to_ars=float(payload.rate_to_ars),
+        )
+        session.add(fx)
+        session.commit()
+        session.refresh(fx)
+        return fx
+
+    existing.rate_to_ars = float(payload.rate_to_ars)
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+    return existing
+
+
+def list_fx_rates(*, session: Session) -> list[FxRate]:
+    return list(session.exec(select(FxRate).order_by(FxRate.year_month, FxRate.currency)))
+
+
+def _round_money(value: float) -> float:
+    return round(float(value) + 1e-9, 2)
+
+
+def _default_payers_for_card_owner(*, card: Card) -> list[PurchasePayer]:
+    return [
+        PurchasePayer(
+            purchase_id=0,
+            person_id=card.owner_person_id,
+            share_type=ShareType.PERCENT,
+            share_value=100.0,
+        )
+    ]
+
+
+def _normalize_installment_amount(
+    *, amount_original: float, installments_total: int, installment_amount_original: Optional[float]
+) -> float:
+    if installments_total <= 1:
+        return _round_money(amount_original)
+
+    if installment_amount_original is not None:
+        return _round_money(installment_amount_original)
+
+    return _round_money(amount_original / installments_total)
+
+
+def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
+    card = session.get(Card, payload.card_id)
+    if card is None:
+        raise ValueError("Card not found")
+
+    first_month = payload.first_installment_month or to_year_month(payload.purchase_date)
+    installment_amount = _normalize_installment_amount(
+        amount_original=payload.amount_original,
+        installments_total=payload.installments_total,
+        installment_amount_original=payload.installment_amount_original,
+    )
+
+    purchase = Purchase(
+        card_id=payload.card_id,
+        purchase_date=payload.purchase_date,
+        description=payload.description,
+        currency=payload.currency,
+        amount_original=_round_money(payload.amount_original),
+        amount_ars=None,
+        installments_total=payload.installments_total,
+        installment_amount_original=installment_amount,
+        first_installment_month=first_month,
+        owner_person_id=payload.owner_person_id,
+        category=payload.category,
+        notes=payload.notes,
+        is_refund=payload.is_refund,
+    )
+
+    session.add(purchase)
+    session.commit()
+    session.refresh(purchase)
+
+    payers: list[PurchasePayer]
+    if payload.payers and len(payload.payers) > 0:
+        payers = [
+            PurchasePayer(
+                purchase_id=purchase.id,
+                person_id=p.person_id,
+                share_type=p.share_type,
+                share_value=p.share_value,
+            )
+            for p in payload.payers
+        ]
+    else:
+        payers = [
+            PurchasePayer(
+                purchase_id=purchase.id,
+                person_id=card.owner_person_id,
+                share_type=ShareType.PERCENT,
+                share_value=100.0,
+            )
+        ]
+
+    for payer in payers:
+        session.add(payer)
+
+    _create_installment_schedule(session=session, purchase=purchase)
+
+    session.commit()
+    return purchase
+
+
+def list_purchases(*, session: Session, year_month: Optional[str] = None) -> list[Purchase]:
+    stmt = select(Purchase).order_by(Purchase.purchase_date.desc(), Purchase.id.desc())
+    if year_month:
+        # SQLite-friendly: filter by year and month ranges.
+        year_s, month_s = year_month.split("-")
+        year = int(year_s)
+        month = int(month_s)
+        start = date(year, month, 1)
+        if month == 12:
+            end = date(year + 1, 1, 1)
+        else:
+            end = date(year, month + 1, 1)
+        stmt = stmt.where(Purchase.purchase_date >= start, Purchase.purchase_date < end)
+    return list(session.exec(stmt))
+
+
+def _create_installment_schedule(*, session: Session, purchase: Purchase) -> None:
+    if purchase.id is None:
+        raise ValueError("purchase.id is required")
+
+    installment_amount = purchase.installment_amount_original or purchase.amount_original
+
+    if purchase.installments_total <= 1:
+        ym = purchase.first_installment_month or to_year_month(purchase.purchase_date)
+        session.add(
+            InstallmentSchedule(
+                purchase_id=purchase.id,
+                year_month=ym,
+                installment_index=1,
+                currency=purchase.currency,
+                amount_original=_round_money(installment_amount),
+                amount_ars=None,
+            )
+        )
+        return
+
+    first_month = purchase.first_installment_month or to_year_month(purchase.purchase_date)
+    for idx in range(1, purchase.installments_total + 1):
+        ym = add_months(first_month, idx - 1)
+        session.add(
+            InstallmentSchedule(
+                purchase_id=purchase.id,
+                year_month=ym,
+                installment_index=idx,
+                currency=purchase.currency,
+                amount_original=_round_money(installment_amount),
+                amount_ars=None,
+            )
+        )
+
+
+def report_monthly_totals_ars(*, session: Session) -> list[tuple[str, float]]:
+    raise NotImplementedError("Use report_monthly_totals_converted")
+
+
+def _fx_rate_map(*, session: Session) -> dict[tuple[str, CurrencyCode], float]:
+    rates = list_fx_rates(session=session)
+    return {(r.year_month, r.currency): float(r.rate_to_ars) for r in rates if r.id is not None}
+
+
+def report_monthly_totals_converted(
+    *, session: Session, card_id: Optional[int] = None, person_id: Optional[int] = None
+) -> list[tuple[str, float]]:
+    fx_map = _fx_rate_map(session=session)
+
+    schedules_stmt = select(InstallmentSchedule)
+    if card_id is not None:
+        schedules_stmt = schedules_stmt.join(Purchase, Purchase.id == InstallmentSchedule.purchase_id).where(
+            Purchase.card_id == card_id
+        )
+    schedules = list(session.exec(schedules_stmt))
+
+    payer_map: dict[int, list[PurchasePayer]] = {}
+    if person_id is not None:
+        payers = list(session.exec(select(PurchasePayer).where(PurchasePayer.person_id == person_id)))
+        for p in payers:
+            payer_map.setdefault(p.purchase_id, []).append(p)
+
+    totals: dict[str, float] = {}
+    for sch in schedules:
+        amount_original = float(sch.amount_original)
+        amount_ars: float
+
+        if sch.currency == CurrencyCode.ARS:
+            amount_ars = amount_original
+        else:
+            rate = fx_map.get((sch.year_month, sch.currency))
+            if rate is None:
+                # If FX missing, skip for now to avoid silent wrong totals.
+                continue
+            amount_ars = amount_original * float(rate)
+
+        if person_id is not None:
+            payers = payer_map.get(sch.purchase_id, [])
+            allocated = 0.0
+            for payer in payers:
+                if payer.person_id != person_id:
+                    continue
+                if payer.share_type == ShareType.PERCENT:
+                    allocated += amount_ars * (float(payer.share_value) / 100.0)
+                else:
+                    allocated += float(payer.share_value)
+            amount_ars = allocated
+
+        totals[sch.year_month] = float(totals.get(sch.year_month, 0.0) + amount_ars)
+
+    return [(ym, round(total, 2)) for ym, total in sorted(totals.items(), key=lambda x: x[0])]
