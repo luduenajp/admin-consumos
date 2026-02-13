@@ -14,24 +14,25 @@ Tener una app web local funcional para importar resúmenes de tarjeta, gestionar
 - [x] Proxy Vite para `/api` (sin CORS)
 
 ### 2️⃣ Mejoras de UX y datos
-- [ ] UI para crear Personas/Tarjetas/FX (sin curl)
-- [ ] Filtros en Compras (por tarjeta, persona, mes, categoría)
-- [ ] Paginación en tablas grandes
-- [ ] Indicadores de carga y errores claros
+- [x] UI para crear Personas/Tarjetas/FX (página Admin)
+- [x] Filtros en Compras (por tarjeta, persona, mes, categoría, montos, descripción, pagado por, deudor)
+- [x] Paginación en tablas grandes
+- [x] Indicadores de carga y errores claros
 - [ ] Validaciones frontend antes de enviar (ej. tarjeta obligatoria)
 
 ### 3️⃣ Importación extendida
 - [ ] Importador CSV (Santander/Nación/MercadoPago)
-- [ ] Importador PDF (con contraseña `34247332`)
-- [ ] Vista de “preview” antes de confirmar importación
+- [x] Importador PDF (Banco Nación Visa/Mastercard, MercadoPago; contraseña opcional)
+- [ ] Vista de "preview" antes de confirmar importación
 - [ ] Detección de duplicados más robusta (similitud de descripción)
 - [ ] Logs de importación por archivo
 
 ### 4️⃣ Reportes y proyecciones
-- [ ] Dashboard con gráficos (ej. evolución mensual, distribución por categoría)
-- [ ] Vista de “cuotas comprometidas” por mes futuro
+- [x] Dashboard con gráficos (distribución por categoría, timeline de cuotas futuras)
+- [x] Vista de "cuotas comprometidas" por mes futuro (timeline)
 - [ ] Exportación CSV/Excel de reportes
-- [ ] Filtros por persona/tarjeta en reportes mensuales
+- [x] Filtros por persona/tarjeta en reportes mensuales
+- [x] Resumen del mes (desglose de cuotas por compra)
 - [ ] Comparación mes vs mes anterior
 
 ### 5️⃣ Funcionalidades avanzadas
@@ -42,10 +43,10 @@ Tener una app web local funcional para importar resúmenes de tarjeta, gestionar
 - [ ] Conciliación de pagos de tarjeta (opcional)
 
 ## Próximos pasos inmediatos (recomendado)
-1) **UI para Personas/Tarjetas/FX** (evitar curl)
-2) **Validaciones y filtros** en la vista de Compras
-3) **Importador CSV** (Santander/Nación/MercadoPago)
-4) **Preview de importación** (mostrar filas parseadas antes de confirmar)
+1) **Validaciones frontend** (ej. tarjeta obligatoria antes de importar)
+2) **Importador CSV** (Santander/Nación/MercadoPago)
+3) **Preview de importación** (mostrar filas parseadas antes de confirmar)
+4) **Exportación CSV/Excel** de reportes
 
 ## Decisiones pendientes (si se desean)
 - ¿Queremos manejo de errores de importación más granular?
@@ -55,6 +56,8 @@ Tener una app web local funcional para importar resúmenes de tarjeta, gestionar
 ## Notas para otros agentes
 - La carpeta `spec/` es la fuente de verdad sobre arquitectura y decisiones.
 - Los modelos están en `backend/app/models.py`.
-- Los parsers de importación viven en `backend/app/importers/`.
+- Los parsers de importación viven en `backend/app/importers/` (visa_xlsx, visa_pdf).
 - El frontend usa proxy Vite (`/api` → `http://localhost:8000`).
-- La DB SQLite se crea en `backend/data/app.db` (absoluta).
+- La DB SQLite se crea en `data/app.db` (absoluta, en raíz del proyecto).
+- Script de arranque: `./start.sh` — levanta backend + frontend.
+- Validar PDFs: `python examples/validate_pdf.py <archivo.pdf> [contraseña]`.
