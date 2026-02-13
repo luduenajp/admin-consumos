@@ -1,31 +1,51 @@
 from __future__ import annotations
 
+import math
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from app.crud import (
     create_card,
+    create_debtor,
     create_person,
     create_purchase,
+    get_distinct_categories,
     list_cards,
+    list_debtors,
     list_fx_rates,
     list_people,
     list_purchases,
+    report_debts,
+    report_installment_timeline,
+    report_month_breakdown,
     report_monthly_totals_converted,
+    report_spending_by_category,
+    update_purchase,
     upsert_fx_rate,
 )
 from app.db import get_session
 from app.schemas import (
     CardCreate,
     CardRead,
+    CategoryRead,
+    CategorySpendingRow,
+    DebtorCreate,
+    DebtorRead,
+    DebtSummaryRow,
     FxRateRead,
     FxRateUpsert,
+    MonthBreakdownResponse,
+    MonthBreakdownRow,
+    PaginatedResponse,
     PersonCreate,
     PersonRead,
     PurchaseCreate,
     PurchaseRead,
+    PurchaseUpdate,
     ReportMonthlyRow,
+    TimelineRow,
 )
 
 router = APIRouter()
@@ -67,7 +87,10 @@ def get_cards() -> list[CardRead]:
 @router.post("/cards", response_model=CardRead)
 def post_card(payload: CardCreate) -> CardRead:
     with get_session() as session:
-        card = create_card(session=session, payload=payload)
+        try:
+            card = create_card(session=session, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         if card.id is None:
             raise HTTPException(status_code=500, detail="Failed to create card")
         return CardRead(
@@ -79,10 +102,33 @@ def post_card(payload: CardCreate) -> CardRead:
         )
 
 
-@router.get("/purchases", response_model=list[PurchaseRead])
-def get_purchases(year_month: Optional[str] = None) -> list[PurchaseRead]:
+@router.get("/purchases", response_model=PaginatedResponse[PurchaseRead])
+def get_purchases(
+    year_month: Optional[str] = None,
+    category: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    description_search: Optional[str] = None,
+    person_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> PaginatedResponse[PurchaseRead]:
     with get_session() as session:
-        purchases = list_purchases(session=session, year_month=year_month)
+        purchases, total = list_purchases(
+            session=session,
+            year_month=year_month,
+            category=category,
+            start_date=start_date,
+            end_date=end_date,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            description_search=description_search,
+            person_id=person_id,
+            page=page,
+            page_size=page_size,
+        )
         out: list[PurchaseRead] = []
         for p in purchases:
             if p.id is None:
@@ -102,9 +148,18 @@ def get_purchases(year_month: Optional[str] = None) -> list[PurchaseRead]:
                     category=p.category,
                     notes=p.notes,
                     is_refund=p.is_refund,
+                    debtor_id=p.debtor_id,
+                    debt_settled=p.debt_settled,
                 )
             )
-        return out
+        pages = math.ceil(total / page_size) if page_size > 0 else 0
+        return PaginatedResponse(
+            items=out,
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
 
 
 @router.post("/purchases", response_model=PurchaseRead)
@@ -132,7 +187,70 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
             category=purchase.category,
             notes=purchase.notes,
             is_refund=purchase.is_refund,
+            debtor_id=purchase.debtor_id,
+            debt_settled=purchase.debt_settled,
         )
+
+
+@router.patch("/purchases/{purchase_id}", response_model=PurchaseRead)
+def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
+    with get_session() as session:
+        try:
+            purchase = update_purchase(session=session, purchase_id=purchase_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+
+        if purchase.id is None:
+            raise HTTPException(status_code=500, detail="Failed to update purchase")
+
+        return PurchaseRead(
+            id=purchase.id,
+            card_id=purchase.card_id,
+            purchase_date=purchase.purchase_date,
+            description=purchase.description,
+            currency=purchase.currency,
+            amount_original=purchase.amount_original,
+            installments_total=purchase.installments_total,
+            installment_amount_original=purchase.installment_amount_original,
+            first_installment_month=purchase.first_installment_month,
+            owner_person_id=purchase.owner_person_id,
+            category=purchase.category,
+            notes=purchase.notes,
+            is_refund=purchase.is_refund,
+            debtor_id=purchase.debtor_id,
+            debt_settled=purchase.debt_settled,
+        )
+
+
+@router.get("/reports/month-breakdown", response_model=MonthBreakdownResponse)
+def get_report_month_breakdown(
+    year_month: str,
+    card_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+) -> MonthBreakdownResponse:
+    """Desglose de cuotas que vencen en un mes dado. year_month formato YYYY-MM."""
+    with get_session() as session:
+        total_ars, items = report_month_breakdown(
+            session=session,
+            year_month=year_month,
+            card_id=card_id,
+            person_id=person_id,
+        )
+        rows = [
+            MonthBreakdownRow(
+                purchase_id=p.id,
+                purchase_date=p.purchase_date,
+                description=p.description,
+                category=p.category,
+                installment_index=sch.installment_index,
+                installments_total=p.installments_total,
+                amount_ars=amt,
+                currency=str(p.currency),
+            )
+            for p, sch, amt in items
+            if p.id is not None
+        ]
+        return MonthBreakdownResponse(year_month=year_month, total_ars=total_ars, items=rows)
 
 
 @router.get("/reports/monthly", response_model=list[ReportMonthlyRow])
@@ -140,6 +258,70 @@ def get_report_monthly(card_id: Optional[int] = None, person_id: Optional[int] =
     with get_session() as session:
         rows = report_monthly_totals_converted(session=session, card_id=card_id, person_id=person_id)
         return [ReportMonthlyRow(year_month=ym, total_ars=total) for ym, total in rows]
+
+
+@router.get("/reports/timeline", response_model=list[TimelineRow])
+def get_report_timeline(
+    months_ahead: int = 12, card_id: Optional[int] = None, person_id: Optional[int] = None
+) -> list[TimelineRow]:
+    """Return future installment commitments timeline."""
+    with get_session() as session:
+        rows = report_installment_timeline(
+            session=session, months_ahead=months_ahead, card_id=card_id, person_id=person_id
+        )
+        return [TimelineRow(year_month=ym, total_ars=total) for ym, total in rows]
+
+
+@router.get("/categories", response_model=CategoryRead)
+def get_categories() -> CategoryRead:
+    """Return list of distinct categories."""
+    with get_session() as session:
+        categories = get_distinct_categories(session=session)
+        return CategoryRead(categories=categories)
+
+
+@router.get("/reports/category-spending", response_model=list[CategorySpendingRow])
+def get_category_spending(
+    card_id: Optional[int] = None, person_id: Optional[int] = None
+) -> list[CategorySpendingRow]:
+    """Return spending totals by category."""
+    with get_session() as session:
+        rows = report_spending_by_category(session=session, card_id=card_id, person_id=person_id)
+        return [CategorySpendingRow(category=cat, total_ars=total) for cat, total in rows]
+
+
+@router.get("/debtors", response_model=list[DebtorRead])
+def get_debtors() -> list[DebtorRead]:
+    """Return list of all debtors."""
+    with get_session() as session:
+        debtors = list_debtors(session=session)
+        return [DebtorRead(id=d.id, name=d.name) for d in debtors if d.id is not None]
+
+
+@router.post("/debtors", response_model=DebtorRead)
+def post_debtor(payload: DebtorCreate) -> DebtorRead:
+    with get_session() as session:
+        debtor = create_debtor(session=session, payload=payload)
+        if debtor.id is None:
+            raise HTTPException(status_code=500, detail="Failed to create debtor")
+        return DebtorRead(id=debtor.id, name=debtor.name)
+
+
+@router.get("/reports/debts", response_model=list[DebtSummaryRow])
+def get_debt_report() -> list[DebtSummaryRow]:
+    """Return debt summary per debtor."""
+    with get_session() as session:
+        rows = report_debts(session=session)
+        return [
+            DebtSummaryRow(
+                debtor_id=debtor_id,
+                debtor_name=debtor_name,
+                total_owed=total_owed,
+                total_settled=total_settled,
+                pending_purchases=pending_count,
+            )
+            for debtor_id, debtor_name, total_owed, total_settled, pending_count in rows
+        ]
 
 
 @router.get("/fx", response_model=list[FxRateRead])

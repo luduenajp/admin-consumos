@@ -73,6 +73,8 @@ def _parse_money(value: object) -> Optional[float]:
 
 
 _installments_re = re.compile(r"^(\d+)\s*de\s*(\d+)$", re.IGNORECASE)
+_installments_c_re = re.compile(r"C\.(\d+)/(\d+)", re.IGNORECASE)  # Banco Nación: C.17/24
+_installments_de_re = re.compile(r"(\d+)\s+de\s+(\d+)", re.IGNORECASE)  # MercadoPago: "3 de 3" en medio
 
 
 def _parse_installments(value: object) -> tuple[int, int]:
@@ -84,6 +86,10 @@ def _parse_installments(value: object) -> tuple[int, int]:
         return 1, 1
 
     m = _installments_re.match(s)
+    if not m:
+        m = _installments_c_re.search(s)  # C.X/Y en medio del texto
+    if not m:
+        m = _installments_de_re.search(s)  # "3 de 3" MercadoPago
     if not m:
         return 1, 1
 
@@ -98,9 +104,11 @@ def _parse_installments(value: object) -> tuple[int, int]:
 
 def _is_excluded_description(description: str) -> bool:
     d = description.strip().lower()
-    # Heurística MVP para excluir filas no-consumo (pagos/promos/ajustes)
+    # Excluir pagos, promos, beneficios, totales
     excluded_prefixes = (
         "su pago",
+        "pago de tarjeta",
+        "resumen de ",  # "Resumen de enero" (saldo anterior)
         "promo",
         "cr.",
         "cr ",
@@ -108,8 +116,14 @@ def _is_excluded_description(description: str) -> bool:
         "tarjeta de",
         "tarjeta visa",
         "movimientos del resumen",
+        "bonif.",  # bonificaciones / devoluciones por beneficios
     )
-    return d.startswith(excluded_prefixes)
+    if d.startswith(excluded_prefixes):
+        return True
+    # Excluir impuestos (DB.RG 5617, IIBB PERCEP, IMPUESTO DE SELLOS)
+    # No excluir devoluciones por compra anulada
+    tax_patterns = ("db.rg 5617", "iibb percep", "impuesto de sellos", "impuesto de sello", "impuesto al sello")
+    return any(p in d for p in tax_patterns)
 
 
 def _detect_statement_year_month(df_raw: pd.DataFrame) -> Optional[str]:

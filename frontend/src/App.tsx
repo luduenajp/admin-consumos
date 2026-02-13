@@ -1,5 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import './App.css'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { AdminPage } from './pages/admin-page'
 import { DashboardPage } from './pages/dashboard-page'
 import { ImportPage } from './pages/import-page'
 import { PurchasesPage } from './pages/purchases-page'
@@ -19,15 +21,21 @@ function App() {
           <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/import">
             Importar
           </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/admin">
+            Admin
+          </NavLink>
         </nav>
       </header>
 
       <main className="appMain">
-        <Routes>
-          <Route element={<DashboardPage />} path="/" />
-          <Route element={<PurchasesPage />} path="/purchases" />
-          <Route element={<ImportPage />} path="/import" />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route element={<DashboardPage />} path="/" />
+            <Route element={<PurchasesPage />} path="/purchases" />
+            <Route element={<ImportPage />} path="/import" />
+            <Route element={<AdminPage />} path="/admin" />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   )

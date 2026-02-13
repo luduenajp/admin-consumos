@@ -30,6 +30,11 @@ class Card(SQLModel, table=True):
     last4: Optional[str] = None
 
 
+class Debtor(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+
+
 class FxRate(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     year_month: str = Field(index=True)  # YYYY-MM
@@ -57,6 +62,9 @@ class Purchase(SQLModel, table=True):
     notes: Optional[str] = None
 
     is_refund: bool = Field(default=False)
+
+    debtor_id: Optional[int] = Field(default=None, foreign_key="debtor.id", index=True)
+    debt_settled: bool = Field(default=False)
 
 
 class PurchasePayer(SQLModel, table=True):

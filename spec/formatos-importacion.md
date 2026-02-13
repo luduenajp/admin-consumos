@@ -9,7 +9,7 @@
 
 ### Reglas de parseo
 - **Fecha**: `dd/mm/YYYY`. Se convierte a `date`.
-- **Cuotas**: texto `"x de y"` → `(installment_index, installments_total)`. Si no hay, se asume `1/1`.
+- **Cuotas**: texto `"x de y"` o `C.X/Y` (ej. `C.17/24`) → `(installment_index, installments_total)`. Si no hay, se asume `1/1`.
 - **Monto**: formato argentino (`$1.443.685,70`, `U$S24,51`). Se limpia y convierte a `float`.
 - **Moneda**: se infiere del monto no nulo (`Monto en pesos` → ARS; `Monto en dólares` → USD).
 
@@ -23,6 +23,10 @@
   - `"Tarjeta de"`
   - `"Tarjeta Visa"`
   - `"Movimientos del resumen"`
+- Impuestos: `DB.RG 5617`, `IIBB PERCEP`, `IMPUESTO DE SELLOS`, `IMPUESTO AL SELLO`
+- Bonificaciones: `BONIF.`
+- Otros: `Pago de tarjeta`, `Resumen de [mes]`
+- **Incluye**: devoluciones por compra anulada
 
 ### Deduplicación
 - Se genera un `row_fingerprint` (SHA256) con: `provider + card_id + fecha + descripción + moneda + cuotas + monto`.
@@ -64,16 +68,20 @@
 
 ---
 
-## PDF (fase 2)
+## PDF (implementado)
+
+### Formatos soportados (orden de intento)
+1. **Banco Nación Visa**: `FECHA COMPROBANTE DETALLE DE TRANSACCION PESOS DOLAR`, líneas `DD.MM.YY comprobante descripción C.X/Y monto_pesos monto_usd`
+2. **Banco Nación Mastercard**: `DETALLES DEL MES` / `CUOTAS DEL MES`, líneas `DD-Mmm-YY descripción X/Y comprobante monto`
+3. **MercadoPago**: líneas `DD/mmm descripción $ monto` (ej. `10/nov MERPAGO*COMERCIO 3 de 3 304823 $ 22.293,25`)
+
+### Detección de mes de cierre
+- Busca en texto: `CIERRE ACTUAL`, `Cierre actual X de febrero`, `Fecha de cierre`, `Resumen de febrero`
 
 ### Password
-- Los PDFs pueden venir protegidos con contraseña: `34247332`.
+- Los PDFs pueden venir protegidos con contraseña (ej. Nación: `34247332`). Parámetro opcional `password` en el endpoint.
 
-### Estrategia
-- Extraer tablas con librería PDF (ej. `pdfplumber` o `camelot`).
-- Normalizar a mismo esquema que XLSX/CSV.
-- Aplicar mismas exclusiones y deduplicación.
-
-### Notas
-- El layout puede cambiar entre bancos; se sugiere un parser por proveedor.
-- Si el parseo falla, mostrar error claro y no importar nada.
+### Implementación
+- Parser en `backend/app/importers/visa_pdf.py` (pypdf + pdfplumber).
+- Endpoint: `POST /api/import/visa-pdf?provider=...&card_id=...`
+- Mismas exclusiones y deduplicación que XLSX.

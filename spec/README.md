@@ -4,8 +4,8 @@
 App web local para controlar gastos con tarjeta de crédito (vos + tu pareja). Permite importar resúmenes (CSV/XLSX/PDF), modelar cuotas, asignar quién paga, y generar reportes mensuales y proyecciones.
 
 ## Stack
-- **Backend**: Python + FastAPI + SQLite + SQLModel + Alembic (migraciones)
-- **Frontend**: React + Vite + TypeScript + React Query + CSS (sin framework por ahora)
+- **Backend**: Python 3.11+ + FastAPI + SQLite + SQLModel
+- **Frontend**: React 19 + Vite + TypeScript + React Query + CSS custom properties (paleta cálida)
 - **Importación**: pandas + openpyxl (XLSX/CSV); PDF en segunda fase
 - **Ejecución local**: backend en `http://localhost:8000`, frontend en `http://localhost:5173` (proxy `/api`)
 
@@ -13,34 +13,41 @@ App web local para controlar gastos con tarjeta de crédito (vos + tu pareja). P
 - **Sin login**: app local, sin autenticación.
 - **Moneda**: ARS + USD. Tipo de cambio USD->ARS **manual por mes** (`FxRate`).
 - **Cuotas**: se imputa **solo el valor de la cuota del mes** en reportes.
-- **Pagadores**: split flexible; por defecto **paga el dueño de la tarjeta**.
+- **Pagadores**: split flexible; por defecto **paga el dueño de la tarjeta**. Shares PERCENT deben sumar 100.
 - **Importación**: excluye pagos/promos/ajustes (MVP). Soporta Visa XLSX primero.
 - **Conciliación de pagos de tarjeta**: fuera de alcance (solo consumos + proyección).
+- **Configuración portable**: DB_PATH y CORS_ORIGINS configurables via variables de entorno (ver `.env.example`).
 
 ## Estructura del repo
 ```
 /
 ├─ backend/
 │  ├─ app/
-│  │  ├─ api.py          # endpoints CRUD + reportes
-│  │  ├─ config.py       # paths y URL de SQLite
-│  │  ├─ crud.py         # lógica de negocio + reportes
-│  │  ├─ db.py          # engine + session + init_db
-│  │  ├─ main.py         # FastAPI app + routers
-│  │  ├─ models.py       # SQLModel (tablas)
-│  │  ├─ schemas.py      # Pydantic (request/response)
+│  │  ├─ api.py          # endpoints CRUD + reportes (ValueError → 400)
+│  │  ├─ config.py       # configuración via env vars (DB_PATH, CORS_ORIGINS)
+│  │  ├─ crud.py         # lógica de negocio + reportes (transacciones atómicas, validación FK)
+│  │  ├─ db.py           # engine + session + init_db + PRAGMA foreign_keys=ON
+│  │  ├─ main.py         # FastAPI app + CORS configurable + routers
+│  │  ├─ models.py       # SQLModel (tablas) — requiere Python 3.11+ (StrEnum)
+│  │  ├─ schemas.py      # Pydantic (validación regex year_month, share_value > 0, model_validator)
 │  │  ├─ import_api.py   # endpoint de importación
+│  │  ├─ utils_dates.py  # utilidades de fecha (add_months, to_year_month)
 │  │  └─ importers/
 │  │     └─ visa_xlsx.py # parser para XLSX Visa
 │  └─ requirements.txt
 ├─ frontend/
 │  ├─ src/
-│  │  ├─ api/           # cliente HTTP + tipos + endpoints
-│  │  ├─ pages/         # componentes de página
-│  │  └─ App.tsx        # routing + layout
+│  │  ├─ api/            # cliente HTTP (con timeout 30s) + tipos + endpoints
+│  │  ├─ components/     # ErrorBoundary
+│  │  ├─ pages/          # dashboard, purchases, import, admin
+│  │  ├─ App.tsx         # routing (4 rutas) + ErrorBoundary wrapper
+│  │  ├─ App.css         # design system (CSS custom properties, paleta cálida)
+│  │  └─ index.css       # variables CSS globales (--color-primary, --color-bg, etc.)
 │  └─ package.json
-├─ resumenes/           # ejemplos de archivos para importar
-└─ spec/               # esta carpeta (documentación)
+├─ resumenes/            # ejemplos de archivos para importar
+├─ spec/                 # esta carpeta (documentación)
+├─ .env.example          # referencia de variables de entorno
+└─ .gitignore            # excluye .venv/, data/, .env, __pycache__/
 ```
 
 ## Modelo de datos (SQLModel)
@@ -74,7 +81,7 @@ class Purchase(SQLModel, table=True):
     amount_ars: float | None = None
     installments_total: int = Field(default=1)
     installment_amount_original: float | None = None
-    first_installment_month: str | None = None  # YYYY-MM
+    first_installment_month: str | None = None  # YYYY-MM (regex validado en schema)
     owner_person_id: int | None = None
     category: str | None = None
     notes: str | None = None
@@ -87,7 +94,7 @@ class PurchasePayer(SQLModel, table=True):
     purchase_id: int = Field(primary_key=True, foreign_key="purchase.id")
     person_id: int = Field(primary_key=True, foreign_key="person.id")
     share_type: ShareType  # "percent" | "fixed"
-    share_value: float
+    share_value: float     # validado > 0 en schema; PERCENT deben sumar 100
 ```
 
 ### Calendario de cuotas (para reportes)
@@ -106,7 +113,7 @@ class InstallmentSchedule(SQLModel, table=True):
 ```python
 class FxRate(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    year_month: str = Field(index=True)
+    year_month: str = Field(index=True)  # YYYY-MM (regex validado en schema)
     currency: CurrencyCode
     rate_to_ars: float
 ```
@@ -129,16 +136,16 @@ Base: `http://localhost:8000/api`
 - `GET /people` – lista personas
 - `POST /people` – crea persona
 - `GET /cards` – lista tarjetas
-- `POST /cards` – crea tarjeta
+- `POST /cards` – crea tarjeta (valida que owner_person_id exista → 400 si no)
 - `GET /purchases?year_month=YYYY-MM` – lista compras (opcional filtro por mes)
-- `POST /purchases` – crea compra (genera calendario de cuotas)
+- `POST /purchases` – crea compra (valida card_id, owner_person_id, payers existan → 400 si no; genera calendario de cuotas atómicamente)
 
 ### Reportes
 - `GET /reports/monthly?card_id=...&person_id=...` – totales mensuales en ARS (conversión USD si hay FX)
 
 ### FX (USD->ARS manual)
 - `GET /fx` – lista FX cargados
-- `POST /fx` – upsert FX por mes/moneda
+- `POST /fx` – upsert FX por mes/moneda (year_month validado con regex YYYY-MM, rate_to_ars > 0)
 
 ### Importación
 - `POST /import/visa-xlsx?provider=...&card_id=...` – multipart file upload (XLSX)
@@ -148,13 +155,16 @@ Base: `http://localhost:8000/api`
   - Deduplica por `row_fingerprint`
   - Crea `Purchase` + `InstallmentSchedule` + `PurchasePayer` (por defecto dueño de tarjeta)
 
+### Health
+- `GET /health` – devuelve `{"status": "ok"}`
+
 ## Flujo de importación (Visa XLSX)
 
-1) Detectar `year_month` del resumen (fila “Fecha de cierre”)
-2) Encontrar tabla de movimientos (header con “Descripción” y “Monto en pesos”)
+1) Detectar `year_month` del resumen (fila "Fecha de cierre")
+2) Encontrar tabla de movimientos (header con "Descripción" y "Monto en pesos")
 3) Por cada fila:
    - Parsear fecha, descripción, cuotas (`"x de y"`), montos
-   - Si monto <= 0 o descripción empieza con “Su pago”, “Promo”, “Cr.”, etc. → **excluir**
+   - Si monto <= 0 o descripción empieza con "Su pago", "Promo", "Cr.", etc. → **excluir**
    - Calcular `first_installment_month` a partir de `year_month` y `installment_index`
    - Calcular `amount_original = installment_amount * installments_total`
 4) Crear `Purchase` (split por defecto al dueño de la tarjeta)
@@ -165,16 +175,11 @@ Base: `http://localhost:8000/api`
 
 ### Backend
 ```bash
-# Opción A: venv
-python -m venv .venv
+# Requiere Python 3.11+ (usa StrEnum)
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 cd backend
-uvicorn app.main:app --reload --port 8000
-
-# Opción B: conda (si usás)
-conda env create -f environment.yml
-conda activate admin-consumos
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -185,30 +190,24 @@ npm install
 npm run dev  # http://localhost:5173
 ```
 
-### Primer flujo de prueba (postman/curl)
-```bash
-# 1) Crear personas
-curl -X POST http://localhost:8000/api/people -H 'Content-Type: application/json' -d '{"name":"Pablo"}'
-curl -X POST http://localhost:8000/api/people -H 'Content-Type: application/json' -d '{"name":"Cintia"}'
-
-# 2) Crear tarjeta (asignada a Pablo, id 1)
-curl -X POST http://localhost:8000/api/cards -H 'Content-Type: application/json' -d '{"name":"Visa Pablo","provider":"santander","owner_person_id":1,"last4":"5623"}'
-
-# 3) Cargar FX (USD->ARS para el mes del resumen)
-curl -X POST http://localhost:8000/api/fx -H 'Content-Type: application/json' -d '{"year_month":"2026-01","currency":"USD","rate_to_ars":1200}'
-
-# 4) Importar XLSX (desde UI o curl)
-curl -X POST 'http://localhost:8000/api/import/visa-xlsx?provider=santander&card_id=1' -F 'file=@resumenes/pablo-visa-enero.xlsx'
-```
+### Primer flujo de prueba (desde la UI)
+1. Ir a `/admin` → crear personas (ej: "Pablo", "Cintia")
+2. Crear tarjeta (ej: "Visa Santander", asignada a Pablo)
+3. Cargar tipo de cambio USD→ARS para el mes del resumen
+4. Ir a `/import` → subir el XLSX
+5. Ver resultados en `/purchases` y `/` (Dashboard)
 
 ## Extensiones futuras (no en MVP)
-- Importación PDF (con contraseña: `34247332`)
+- Importación PDF (con contraseña)
 - Reglas de categorización automática
 - Presupuestos y alertas
 - Exportación de reportes
 - Conciliación de pagos de tarjeta
 - Multi-moneda avanzada (con tipo de cambio histórico)
 - Adjuntos de comprobantes
+- Endpoints PUT/DELETE para editar y borrar entidades
+- Alembic para migraciones de DB
+- Tests (pytest + Vitest)
 
 ## Guía para otros agentes/IDEs
 
@@ -223,17 +222,35 @@ curl -X POST 'http://localhost:8000/api/import/visa-xlsx?provider=santander&card
 - Exponer endpoint en `backend/app/api.py`
 - Consumir en `frontend/src/pages/...-page.tsx`
 
-### Migraciones de DB
-- Usar Alembic: `alembic revision --autogenerate -m "msg"` y `alembic upgrade head`
-- El `init_db()` actual crea tablas con SQLModel; en prod preferir migraciones.
+### Agregar nuevas páginas frontend
+1) Crear `frontend/src/pages/<nombre>-page.tsx` usando los patrones existentes:
+   - `useQuery` con queryKey descriptivo para lectura
+   - `useMutation` con `onSuccess` + `queryClient.invalidateQueries()` para escritura
+   - `extractErrorMessage()` de `api/http.ts` para errores
+   - Clases CSS existentes: `page`, `pageTitle`, `panel`, `panelTitle`, `table`, `formRow`, `label`, `input`, `button`, `error`, `success`, `muted`, `hint`
+2) Registrar ruta en `frontend/src/App.tsx` (dentro del `<ErrorBoundary>`)
+3) Agregar `<NavLink>` en la nav del header
 
-### Tests
-- Backend: pytest + FastAPI TestClient
-- Frontend: Vitest + React Testing Library
+### Paleta de colores (CSS custom properties)
+Las variables están en `frontend/src/index.css`. Para cambiar la paleta, solo modificar las variables `--color-*`. Todos los componentes las consumen vía `App.css`.
+
+### Migraciones de DB
+- El `init_db()` actual crea tablas con SQLModel.metadata.create_all.
+- Para migraciones futuras: configurar Alembic.
+
+### Integridad de datos
+- `db.py` habilita `PRAGMA foreign_keys=ON` — SQLite enforcea FK
+- `crud.py` valida existencia de FK antes de crear (Person, Card, payers)
+- `schemas.py` valida formato `year_month` con regex, `share_value > 0`, y suma de PERCENT = 100
+- `create_purchase` usa `flush()` + `commit()` único para atomicidad
 
 ## Notas de implementación
-- El frontend usa proxy Vite (`/api` → `http://localhost:8000`) para evitar CORS.
+- El frontend usa proxy Vite (`/api` → `http://localhost:8000`) para evitar CORS en desarrollo.
 - El importador excluye filas no-consumo según heurística (`_is_excluded_description`).
 - Si falta FX de un mes, las cuotas USD **no se suman** en reportes (para evitar totales incorrectos).
 - `InstallmentSchedule` se genera automáticamente al crear una compra con cuotas.
 - `PurchasePayer` por defecto: 100% al dueño de la tarjeta.
+- El frontend tiene timeout de 30s en todas las llamadas API (`AbortController` en `http.ts`).
+- React Query configurado con `staleTime: 2min`, `refetchOnWindowFocus: false`.
+- `ErrorBoundary` en `App.tsx` previene pantalla blanca en errores de render.
+- Cache invalidation automática: importar XLSX invalida queries de purchases y reports.
