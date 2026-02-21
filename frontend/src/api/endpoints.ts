@@ -19,6 +19,7 @@ import type {
   PaginatedResponse,
   Person,
   Purchase,
+  PurchaseCreate,
   PurchaseUpdate,
   TimelineRow,
   TransferCalculationResponse,
@@ -72,7 +73,7 @@ export function fetchPurchases(filters?: {
   return getJson<PaginatedResponse<Purchase>>(`/api/purchases${suffix}`)
 }
 
-export function createPurchase(payload: any): Promise<Purchase> {
+export function createPurchase(payload: PurchaseCreate): Promise<Purchase> {
   return postJson<Purchase>('/api/purchases', payload)
 }
 

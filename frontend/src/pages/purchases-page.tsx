@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase, deletePurchase, createPurchase } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { PurchaseUpdate } from '../api/types'
+import type { CurrencyCode, PaymentMethod, PurchaseCreate, PurchaseUpdate } from '../api/types'
 import { Spinner } from '../components/Spinner'
 
 function EditableCell({
@@ -144,16 +144,16 @@ export function PurchasesPage() {
   const [newPurchase, setNewPurchase] = useState({
     purchase_date: new Date().toISOString().split('T')[0],
     description: '',
-    payment_method: 'cash' as const,
+    payment_method: 'cash' as PaymentMethod,
     amount_original: '',
-    currency: 'ARS' as const,
+    currency: 'ARS' as CurrencyCode,
     owner_person_id: '',
     debtor_id: '',
     notes: '',
   })
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => createPurchase(payload),
+    mutationFn: (payload: PurchaseCreate) => createPurchase(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] })
       queryClient.invalidateQueries({ queryKey: ['reports'] })
@@ -161,9 +161,9 @@ export function PurchasesPage() {
       setNewPurchase({
         purchase_date: new Date().toISOString().split('T')[0],
         description: '',
-        payment_method: 'cash' as const,
+        payment_method: 'cash' as PaymentMethod,
         amount_original: '',
-        currency: 'ARS' as const,
+        currency: 'ARS' as CurrencyCode,
         owner_person_id: '',
         debtor_id: '',
         notes: '',
@@ -278,7 +278,7 @@ export function PurchasesPage() {
                 <select
                   className="input"
                   value={newPurchase.currency}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, currency: e.target.value as any })}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, currency: e.target.value as CurrencyCode })}
                 >
                   <option value="ARS">ARS</option>
                   <option value="USD">USD</option>
@@ -305,7 +305,7 @@ export function PurchasesPage() {
                 <select
                   className="input"
                   value={newPurchase.payment_method}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, payment_method: e.target.value as any })}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, payment_method: e.target.value as PaymentMethod })}
                 >
                   <option value="cash">Efectivo</option>
                   <option value="transfer">Transferencia</option>
