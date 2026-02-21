@@ -105,6 +105,28 @@ export interface FxRateUpsert {
   rate_to_ars: number
 }
 
+export interface PurchaseCreate {
+  card_id?: number | null
+  payment_method: PaymentMethod
+  purchase_date: string
+  description: string
+  currency: CurrencyCode
+  amount_original: number
+  installments_total?: number
+  installment_amount_original?: number | null
+  first_installment_month?: string | null
+  owner_person_id?: number | null
+  category?: string | null
+  notes?: string | null
+  is_refund?: boolean
+  debtor_id?: number | null
+  payers?: {
+    person_id: number
+    share_type: 'percent' | 'fixed'
+    share_value: number
+  }[]
+}
+
 export interface TimelineRow {
   year_month: string
   total_ars: number

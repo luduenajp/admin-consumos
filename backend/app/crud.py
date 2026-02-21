@@ -149,6 +149,7 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
         category=payload.category,
         notes=payload.notes,
         is_refund=payload.is_refund,
+        debtor_id=payload.debtor_id,
     )
 
     session.add(purchase)

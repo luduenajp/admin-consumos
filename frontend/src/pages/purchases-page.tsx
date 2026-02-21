@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase, deletePurchase } from '../api/endpoints'
+import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase, deletePurchase, createPurchase } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { PurchaseUpdate } from '../api/types'
 import { Spinner } from '../components/Spinner'
@@ -139,6 +139,57 @@ export function PurchasesPage() {
     },
   })
 
+  // Manual Creation State
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newPurchase, setNewPurchase] = useState({
+    purchase_date: new Date().toISOString().split('T')[0],
+    description: '',
+    payment_method: 'cash' as const,
+    amount_original: '',
+    currency: 'ARS' as const,
+    owner_person_id: '',
+    debtor_id: '',
+    notes: '',
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => createPurchase(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] })
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+      setShowAddForm(false)
+      setNewPurchase({
+        purchase_date: new Date().toISOString().split('T')[0],
+        description: '',
+        payment_method: 'cash' as const,
+        amount_original: '',
+        currency: 'ARS' as const,
+        owner_person_id: '',
+        debtor_id: '',
+        notes: '',
+      })
+    },
+    onError: (err) => {
+      alert(`Error al crear compra: ${extractErrorMessage(err)}`)
+    },
+  })
+
+  const handleAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPurchase.description || !newPurchase.amount_original || !newPurchase.owner_person_id) {
+      alert('Por favor completa los campos obligatorios (Descripción, Monto, Pagado por)')
+      return
+    }
+
+    createMutation.mutate({
+      ...newPurchase,
+      amount_original: parseFloat(newPurchase.amount_original),
+      owner_person_id: Number(newPurchase.owner_person_id),
+      debtor_id: newPurchase.debtor_id ? Number(newPurchase.debtor_id) : null,
+      installments_total: 1,
+    })
+  }
+
   const handleReset = () => {
     setStartDate('')
     setEndDate('')
@@ -175,7 +226,125 @@ export function PurchasesPage() {
 
   return (
     <section className="page">
-      <h2 className="pageTitle">Compras</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h2 className="pageTitle" style={{ margin: 0 }}>
+          Compras
+        </h2>
+        <button type="button" className="button" style={{ background: 'var(--color-primary)', color: 'white' }} onClick={() => setShowAddForm(!showAddForm)}>
+          {showAddForm ? 'Cancelar' : '+ Nueva compra manual'}
+        </button>
+      </div>
+
+      {showAddForm && (
+        <div className="panel" style={{ marginBottom: '24px', border: '1px solid var(--color-primary)' }}>
+          <div className="panelTitle">Nueva compra (Efectivo / Transferencia)</div>
+          <form onSubmit={handleAddSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div className="formRow">
+                <label className="label">Fecha</label>
+                <input
+                  type="date"
+                  className="input"
+                  required
+                  value={newPurchase.purchase_date}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, purchase_date: e.target.value })}
+                />
+              </div>
+              <div className="formRow">
+                <label className="label">Descripción</label>
+                <input
+                  type="text"
+                  className="input"
+                  required
+                  placeholder="Ej: Almuerzo, Supermercado..."
+                  value={newPurchase.description}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, description: e.target.value })}
+                />
+              </div>
+              <div className="formRow">
+                <label className="label">Monto</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  required
+                  placeholder="0.00"
+                  value={newPurchase.amount_original}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, amount_original: e.target.value })}
+                />
+              </div>
+              <div className="formRow">
+                <label className="label">Moneda</label>
+                <select
+                  className="input"
+                  value={newPurchase.currency}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, currency: e.target.value as any })}
+                >
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div className="formRow">
+                <label className="label">Pagado por</label>
+                <select
+                  className="input"
+                  required
+                  value={newPurchase.owner_person_id}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, owner_person_id: e.target.value })}
+                >
+                  <option value="">Seleccionar...</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="formRow">
+                <label className="label">Medio de pago</label>
+                <select
+                  className="input"
+                  value={newPurchase.payment_method}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, payment_method: e.target.value as any })}
+                >
+                  <option value="cash">Efectivo</option>
+                  <option value="transfer">Transferencia</option>
+                </select>
+              </div>
+              <div className="formRow">
+                <label className="label">Deudor (Opcional)</label>
+                <select
+                  className="input"
+                  value={newPurchase.debtor_id}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, debtor_id: e.target.value })}
+                >
+                  <option value="">Ninguno</option>
+                  {debtors.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="formRow">
+                <label className="label">Detalle / Notas</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Opcional..."
+                  value={newPurchase.notes}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, notes: e.target.value })}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button type="submit" className="button" style={{ background: 'var(--color-primary)', color: 'white' }} disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Guardando...' : 'Guardar compra'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Filter Panel */}
       <div className="panel">

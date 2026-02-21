@@ -72,6 +72,10 @@ export function fetchPurchases(filters?: {
   return getJson<PaginatedResponse<Purchase>>(`/api/purchases${suffix}`)
 }
 
+export function createPurchase(payload: any): Promise<Purchase> {
+  return postJson<Purchase>('/api/purchases', payload)
+}
+
 export function fetchMonthBreakdown(params: {
   yearMonth: string
   cardId?: number
