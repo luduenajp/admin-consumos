@@ -112,9 +112,11 @@ def _normalize_installment_amount(
 
 
 def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
-    card = session.get(Card, payload.card_id)
-    if card is None:
-        raise ValueError("Card not found")
+    card = None
+    if payload.card_id is not None:
+        card = session.get(Card, payload.card_id)
+        if card is None:
+            raise ValueError("Card not found")
 
     if payload.owner_person_id is not None:
         if session.get(Person, payload.owner_person_id) is None:
@@ -134,6 +136,7 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
 
     purchase = Purchase(
         card_id=payload.card_id,
+        payment_method=payload.payment_method,
         purchase_date=payload.purchase_date,
         description=payload.description,
         currency=payload.currency,
@@ -163,10 +166,21 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
             for p in payload.payers
         ]
     else:
+        # If no card, we MUST have owner_person_id or fail gracefully
+        default_person_id = None
+        if card:
+            default_person_id = card.owner_person_id
+        elif payload.owner_person_id:
+            default_person_id = payload.owner_person_id
+        else:
+            # Fallback for manual creation without card/owner: use first person found?
+            # Better to require owner_person_id in the API for non-card expenses
+            raise ValueError("owner_person_id is required for non-card expenses")
+
         payers = [
             PurchasePayer(
                 purchase_id=purchase.id,
-                person_id=card.owner_person_id,
+                person_id=default_person_id,
                 share_type=ShareType.PERCENT,
                 share_value=100.0,
             )
@@ -302,6 +316,19 @@ def update_purchase(*, session: Session, purchase_id: int, payload: PurchaseUpda
     return purchase
 
 
+def delete_purchase(*, session: Session, purchase_id: int) -> None:
+    """Delete a purchase and all its related installments and payers."""
+    from sqlalchemy import text as sa_text
+    purchase = session.get(Purchase, purchase_id)
+    if purchase is None:
+        raise ValueError(f"Purchase {purchase_id} not found")
+    # Use direct SQL deletes in FK-safe order (children before parent)
+    session.exec(sa_text("DELETE FROM installmentschedule WHERE purchase_id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]
+    session.exec(sa_text("DELETE FROM purchasepayer WHERE purchase_id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]
+    session.exec(sa_text("DELETE FROM purchase WHERE id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]
+    session.commit()
+
+
 def _create_installment_schedule(*, session: Session, purchase: Purchase) -> None:
     if purchase.id is None:
         raise ValueError("purchase.id is required")
@@ -401,16 +428,18 @@ def report_month_breakdown(
     year_month: str,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
-) -> tuple[float, list[tuple[Purchase, InstallmentSchedule, float]]]:
+) -> tuple[float, list[tuple[Purchase, InstallmentSchedule, float, Optional[str]]]]:
     """
     Desglose de cuotas que vencen en un mes dado.
-    Returns (total_ars, list of (purchase, schedule, amount_ars)).
+    Returns (total_ars, list of (purchase, schedule, amount_ars, debtor_name)).
     """
     fx_map = _fx_rate_map(session=session)
 
     stmt = (
-        select(InstallmentSchedule, Purchase)
+        select(InstallmentSchedule, Purchase, Debtor, Card)
         .join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
+        .outerjoin(Debtor, Debtor.id == Purchase.debtor_id)
+        .outerjoin(Card, Card.id == Purchase.card_id)
         .where(InstallmentSchedule.year_month == year_month)
     )
     if card_id is not None:
@@ -424,10 +453,11 @@ def report_month_breakdown(
         for p in payers:
             payer_map.setdefault(p.purchase_id, []).append(p)
 
-    items: list[tuple[Purchase, InstallmentSchedule, float]] = []
+    items: list[tuple[Purchase, InstallmentSchedule, float, Optional[str]]] = []
     total_ars = 0.0
 
-    for sch, purchase in results:
+    for sch, purchase, debtor, card in results:
+        debtor_name = debtor.name if debtor else None
         amount_original = float(sch.amount_original)
         if sch.currency == CurrencyCode.ARS:
             amount_ars = amount_original
@@ -439,18 +469,28 @@ def report_month_breakdown(
 
         if person_id is not None:
             payers = payer_map.get(sch.purchase_id, [])
-            allocated = 0.0
-            for payer in payers:
-                if payer.person_id != person_id:
-                    continue
-                if payer.share_type == ShareType.PERCENT:
-                    allocated += amount_ars * (float(payer.share_value) / 100.0)
-                else:
-                    allocated += float(payer.share_value)
-            amount_ars = allocated
+            if not payers:
+                # No explicit payers: owner gets 100%
+                owner_id = purchase.owner_person_id if purchase.owner_person_id is not None else (card.owner_person_id if card else None)
+                if owner_id != person_id:
+                    amount_ars = 0.0
+                # else: amount_ars remains the same (100%)
+            else:
+                allocated = 0.0
+                for payer in payers:
+                    if payer.person_id != person_id:
+                        continue
+                    if payer.share_type == ShareType.PERCENT:
+                        allocated += amount_ars * (float(payer.share_value) / 100.0)
+                    else:
+                        allocated += float(payer.share_value)
+                amount_ars = allocated
+
+            if amount_ars == 0:
+                continue
 
         total_ars += amount_ars
-        items.append((purchase, sch, round(amount_ars, 2)))
+        items.append((purchase, sch, round(amount_ars, 2), debtor_name))
 
     return (round(total_ars, 2), items)
 

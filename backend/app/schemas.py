@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 T = TypeVar("T")
 
-from app.models import CurrencyCode, ShareType
+from app.models import CurrencyCode, PaymentMethod, ShareType
 
 
 class PersonCreate(BaseModel):
@@ -48,7 +48,8 @@ class PurchasePayerRead(BaseModel):
 
 
 class PurchaseCreate(BaseModel):
-    card_id: int
+    card_id: Optional[int] = None
+    payment_method: PaymentMethod = PaymentMethod.CARD
     purchase_date: date
     description: str
 
@@ -66,6 +67,12 @@ class PurchaseCreate(BaseModel):
     is_refund: bool = False
 
     payers: Optional[list[PurchasePayerCreate]] = None
+
+    @model_validator(mode="after")
+    def _validate_card_presence(self) -> "PurchaseCreate":
+        if self.payment_method == PaymentMethod.CARD and self.card_id is None:
+            raise ValueError("card_id is required for CARD payment method")
+        return self
 
     @model_validator(mode="after")
     def _validate_payer_shares(self) -> "PurchaseCreate":
@@ -89,7 +96,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
 class PurchaseRead(BaseModel):
     id: int
-    card_id: int
+    card_id: Optional[int]
+    payment_method: PaymentMethod
     purchase_date: date
     description: str
     currency: CurrencyCode
@@ -132,12 +140,20 @@ class MonthBreakdownRow(BaseModel):
     installments_total: int
     amount_ars: float
     currency: str
+    debtor_id: Optional[int] = None
+    debtor_name: Optional[str] = None
+    debt_settled: bool = False
 
 
 class MonthBreakdownResponse(BaseModel):
     year_month: str
     total_ars: float
     items: list[MonthBreakdownRow]
+
+
+class GSheetsImportRequest(BaseModel):
+    url: str
+    owner_person_id: int
 
 
 class CategorySpendingRow(BaseModel):

@@ -20,6 +20,7 @@ export interface Card {
 }
 
 export type CurrencyCode = 'ARS' | 'USD'
+export type PaymentMethod = 'card' | 'transfer' | 'cash'
 
 export interface PurchasePayer {
   person_id: number
@@ -30,7 +31,8 @@ export interface PurchasePayer {
 
 export interface Purchase {
   id: number
-  card_id: number
+  card_id?: number | null
+  payment_method: PaymentMethod
   purchase_date: string
   description: string
   currency: CurrencyCode
@@ -69,6 +71,9 @@ export interface MonthBreakdownRow {
   installments_total: number
   amount_ars: number
   currency: string
+  debtor_id?: number | null
+  debtor_name?: string | null
+  debt_settled: boolean
 }
 
 export interface MonthBreakdownResponse {
@@ -191,7 +196,7 @@ export interface IncomeCreate {
 
 export interface TransferCalculationResponse {
   year_month: string
-  ingresos: Array<{person_id: number, person_name: string, amount: number}>
+  ingresos: Array<{ person_id: number, person_name: string, amount: number }>
   total_ingresos: number
   gastos_por_persona: Array<{
     person_id: number
@@ -200,5 +205,10 @@ export interface TransferCalculationResponse {
     should_pay: number
     difference: number
   }>
-  transferencias: Array<{from_person: string, to_person: string, amount: number}>
+  transferencias: Array<{ from_person: string, to_person: string, amount: number }>
+}
+
+export interface GSheetsImportRequest {
+  url: string
+  owner_person_id: number
 }

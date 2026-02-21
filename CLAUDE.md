@@ -157,3 +157,14 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 - Use `extractErrorMessage()` from `api/http.ts` for all error displays
 - Use existing CSS class names from `App.css` — don't introduce new styling systems
 - All forms follow the pattern: `useState` for form state, `useMutation` for submission, inline error/success feedback
+
+## Roadmap / Nice To Have (NTH)
+
+Ideas para futuras mejoras que aportarían valor estratégico:
+
+1. **Simulador de Compra (What-if?)**: Vista para previsualizar el impacto de una nueva compra en cuotas sobre la línea de tiempo y el presupuesto mensual antes de realizarla.
+2. **Motor de Categorización Inteligente**: Mapeo automático de "Descripción -> Categoría" basado en el historial (ej: "YPF" -> "Combustible").
+3. **Proyección de Flujo de Caja (Cash Flow)**: Vista de `Ingresos Estimados - Cuotas Comprometidas` para proyectar el "dinero libre" real de los próximos meses.
+4. **Exportación Compartible**: Generación de imagen o PDF simplificado con el resumen de "Transferencias a realizar" para compartir por WhatsApp.
+5. **Gestión de Fechas de Tarjeta**: Configurar días de cierre y vencimiento por tarjeta para recibir alertas sobre cuándo conviene comprar (patear cuotas al mes siguiente).
+6. **Comprobantes**: Soporte para adjuntar fotos o PDFs de los tickets de compra a cada registro.
