@@ -65,6 +65,7 @@ class PurchaseCreate(BaseModel):
     notes: Optional[str] = None
 
     is_refund: bool = False
+    debtor_id: Optional[int] = None
 
     payers: Optional[list[PurchasePayerCreate]] = None
 
