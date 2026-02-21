@@ -6,13 +6,13 @@ import {
   fetchMonthBreakdown,
   fetchMonthlyReport,
   fetchTimeline,
-  fetchCategorySpending,
   fetchDebtReport,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import { CategoryChart } from '../components/CategoryChart'
 import { Spinner } from '../components/Spinner'
 import { TimelineChart } from '../components/TimelineChart'
+import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
+import { TransferCalculationCard } from '../components/TransferCalculationCard'
 
 function getCurrentYearMonth(): string {
   const now = new Date()
@@ -51,11 +51,6 @@ export function DashboardPage() {
   const { data: timelineData, isLoading: timelineLoading } = useQuery({
     queryKey: ['reports', 'timeline', { personId }],
     queryFn: () => fetchTimeline({ monthsAhead: 12, personId }),
-  })
-
-  const { data: categoryData, isLoading: categoryLoading } = useQuery({
-    queryKey: ['reports', 'category-spending', { personId }],
-    queryFn: () => fetchCategorySpending({ personId }),
   })
 
   const { data: debtData, isLoading: debtLoading } = useQuery({
@@ -125,6 +120,12 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* Monthly Balance Card */}
+      <MonthlyBalanceCard yearMonth={monthFilter} />
+
+      {/* Transfer Calculation Card */}
+      <TransferCalculationCard yearMonth={monthFilter} />
+
       {/* Resumen del mes seleccionado */}
       <div className="panel">
         <div className="panelTitle">Resumen del mes ({monthOptions.find((m) => m.value === monthFilter)?.label ?? monthFilter})</div>
@@ -151,7 +152,7 @@ export function DashboardPage() {
                     <tr>
                       <th>Fecha compra</th>
                       <th>Descripción</th>
-                      <th>Categoría</th>
+                      <th>Detalle</th>
                       <th>Cuota</th>
                       <th style={{ textAlign: 'right' }}>Monto (ARS)</th>
                     </tr>
@@ -161,7 +162,7 @@ export function DashboardPage() {
                       <tr key={`${row.purchase_id}-${row.installment_index}`}>
                         <td>{row.purchase_date}</td>
                         <td>{row.description}</td>
-                        <td>{row.category ?? '-'}</td>
+                        <td>{row.notes ?? '-'}</td>
                         <td>
                           {row.installment_index}/{row.installments_total}
                         </td>
@@ -187,18 +188,6 @@ export function DashboardPage() {
           </div>
         ) : (
           <TimelineChart data={timelineData ?? []} />
-        )}
-      </div>
-
-      {/* Category Distribution Panel */}
-      <div className="panel">
-        <div className="panelTitle">Distribución por Categoría</div>
-        {categoryLoading ? (
-          <div className="loadingContainer">
-            <Spinner size={28} />
-          </div>
-        ) : (
-          <CategoryChart data={categoryData ?? []} />
         )}
       </div>
 

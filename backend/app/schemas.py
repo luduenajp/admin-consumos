@@ -40,6 +40,13 @@ class PurchasePayerCreate(BaseModel):
     share_value: float = Field(gt=0)
 
 
+class PurchasePayerRead(BaseModel):
+    person_id: int
+    person_name: str
+    share_type: ShareType
+    share_value: float
+
+
 class PurchaseCreate(BaseModel):
     card_id: int
     purchase_date: date
@@ -96,6 +103,7 @@ class PurchaseRead(BaseModel):
     is_refund: bool
     debtor_id: Optional[int]
     debt_settled: bool
+    payers: list[PurchasePayerRead] = Field(default_factory=list)
 
 
 class ReportMonthlyRow(BaseModel):
@@ -118,6 +126,7 @@ class MonthBreakdownRow(BaseModel):
     purchase_id: int
     purchase_date: date
     description: str
+    notes: Optional[str] = None
     category: Optional[str]
     installment_index: int
     installments_total: int
@@ -171,3 +180,49 @@ class FxRateRead(BaseModel):
     year_month: str
     currency: CurrencyCode
     rate_to_ars: float
+
+
+class MonthlyBudgetCreate(BaseModel):
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    total_income: float = Field(gt=0)
+    notes: Optional[str] = None
+
+
+class MonthlyBudgetRead(BaseModel):
+    id: int
+    year_month: str
+    total_income: float
+    notes: Optional[str]
+
+
+class MonthlyBalanceResponse(BaseModel):
+    year_month: str
+    presupuesto: float
+    gastos_acumulados: float
+    sobrante_total: float
+    sobrante_por_persona: float
+    porcentaje_gastado: float
+
+
+class IncomeCreate(BaseModel):
+    person_id: int
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    amount: float = Field(gt=0)
+    notes: Optional[str] = None
+
+
+class IncomeRead(BaseModel):
+    id: int
+    person_id: int
+    person_name: str
+    year_month: str
+    amount: float
+    notes: Optional[str]
+
+
+class TransferCalculationResponse(BaseModel):
+    year_month: str
+    ingresos: list[dict]  # [{person_id, person_name, amount}]
+    total_ingresos: float
+    gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
+    transferencias: list[dict]  # [{from_person, to_person, amount}]

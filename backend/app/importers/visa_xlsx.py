@@ -76,6 +76,22 @@ _installments_re = re.compile(r"^(\d+)\s*de\s*(\d+)$", re.IGNORECASE)
 _installments_c_re = re.compile(r"C\.(\d+)/(\d+)", re.IGNORECASE)  # Banco Nación: C.17/24
 _installments_de_re = re.compile(r"(\d+)\s+de\s+(\d+)", re.IGNORECASE)  # MercadoPago: "3 de 3" en medio
 
+_purchase_desc_cleanup_re = re.compile(
+    r"\b(?:C\.)\s*\d+\s*/\s*\d+\b|\b\d+\s*de\s*\d+\b",
+    re.IGNORECASE,
+)
+
+_purchase_desc_leading_code_re = re.compile(r"^\s*\d{3,}\s+")
+_purchase_desc_trailing_code_re = re.compile(r"\s+\d{3,}\s*$")
+
+
+def normalize_purchase_description(*, description: str) -> str:
+    cleaned = _purchase_desc_cleanup_re.sub(" ", description)
+    cleaned = _purchase_desc_leading_code_re.sub("", cleaned)
+    cleaned = _purchase_desc_trailing_code_re.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
 
 def _parse_installments(value: object) -> tuple[int, int]:
     if value is None:
@@ -223,6 +239,20 @@ def compute_row_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseR
         "installments_total": row.installments_total,
         "installment_amount": row.installment_amount,
         "statement_year_month": row.statement_year_month,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def compute_purchase_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseRow) -> str:
+    payload = {
+        "provider": provider,
+        "card_id": card_id,
+        "purchase_date": row.purchase_date.isoformat(),
+        "description": normalize_purchase_description(description=row.description),
+        "currency": row.currency,
+        "installments_total": row.installments_total,
+        "installment_amount": row.installment_amount,
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()

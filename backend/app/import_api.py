@@ -5,18 +5,32 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.crud import create_purchase
+from app.crud import create_purchase, find_existing_purchase_for_installment_import
 from app.db import get_session
 from app.models import CurrencyCode
 from app.schemas import PurchaseCreate
 from app.importers.visa_pdf import parse_visa_pdf
 from app.importers.visa_xlsx import (
     compute_row_fingerprint,
+    normalize_purchase_description,
     mark_imported,
     parse_visa_xlsx,
     was_already_imported,
 )
 from app.utils_dates import add_months
+
+
+def _has_installment_schedule(*, session, purchase_id: int, year_month: str, installment_index: int) -> bool:
+    from sqlmodel import select
+
+    from app.models import InstallmentSchedule
+
+    stmt = select(InstallmentSchedule).where(
+        InstallmentSchedule.purchase_id == purchase_id,
+        InstallmentSchedule.year_month == year_month,
+        InstallmentSchedule.installment_index == installment_index,
+    )
+    return session.exec(stmt).first() is not None
 
 router = APIRouter()
 
@@ -54,23 +68,55 @@ def import_visa_xlsx(card_id: int, provider: str, file: UploadFile = File(...)) 
 
             amount_total = round(r.installment_amount * r.installments_total, 2)
 
-            payload = PurchaseCreate(
+            normalized_desc = normalize_purchase_description(description=r.description)
+            existing = find_existing_purchase_for_installment_import(
+                session=session,
                 card_id=card_id,
                 purchase_date=r.purchase_date,
-                description=r.description,
+                description=normalized_desc,
                 currency=CurrencyCode(r.currency),
-                amount_original=amount_total,
                 installments_total=r.installments_total,
                 installment_amount_original=r.installment_amount,
-                first_installment_month=first_installment_month,
-                owner_person_id=None,
-                category=None,
-                notes=None,
-                is_refund=False,
-                payers=None,
             )
 
-            create_purchase(session=session, payload=payload)
+            if existing is None:
+                payload = PurchaseCreate(
+                    card_id=card_id,
+                    purchase_date=r.purchase_date,
+                    description=normalized_desc,
+                    currency=CurrencyCode(r.currency),
+                    amount_original=amount_total,
+                    installments_total=r.installments_total,
+                    installment_amount_original=r.installment_amount,
+                    first_installment_month=first_installment_month,
+                    owner_person_id=None,
+                    category=None,
+                    notes=None,
+                    is_refund=False,
+                    payers=None,
+                )
+                purchase = create_purchase(session=session, payload=payload)
+            else:
+                purchase = existing
+                if purchase.id is not None:
+                    if not _has_installment_schedule(
+                        session=session,
+                        purchase_id=purchase.id,
+                        year_month=r.statement_year_month,
+                        installment_index=r.installment_index,
+                    ):
+                        from app.models import InstallmentSchedule
+
+                        session.add(
+                            InstallmentSchedule(
+                                purchase_id=purchase.id,
+                                year_month=r.statement_year_month,
+                                installment_index=r.installment_index,
+                                currency=CurrencyCode(r.currency),
+                                amount_original=r.installment_amount,
+                                amount_ars=None,
+                            )
+                        )
 
             mark_imported(
                 session=session,
@@ -132,23 +178,55 @@ def import_visa_pdf_endpoint(
             first_installment_month = add_months(r.statement_year_month, -(r.installment_index - 1))
             amount_total = round(r.installment_amount * r.installments_total, 2)
 
-            payload = PurchaseCreate(
+            normalized_desc = normalize_purchase_description(description=r.description)
+            existing = find_existing_purchase_for_installment_import(
+                session=session,
                 card_id=card_id,
                 purchase_date=r.purchase_date,
-                description=r.description,
+                description=normalized_desc,
                 currency=CurrencyCode(r.currency),
-                amount_original=amount_total,
                 installments_total=r.installments_total,
                 installment_amount_original=r.installment_amount,
-                first_installment_month=first_installment_month,
-                owner_person_id=None,
-                category=None,
-                notes=None,
-                is_refund=False,
-                payers=None,
             )
 
-            create_purchase(session=session, payload=payload)
+            if existing is None:
+                payload = PurchaseCreate(
+                    card_id=card_id,
+                    purchase_date=r.purchase_date,
+                    description=normalized_desc,
+                    currency=CurrencyCode(r.currency),
+                    amount_original=amount_total,
+                    installments_total=r.installments_total,
+                    installment_amount_original=r.installment_amount,
+                    first_installment_month=first_installment_month,
+                    owner_person_id=None,
+                    category=None,
+                    notes=None,
+                    is_refund=False,
+                    payers=None,
+                )
+                purchase = create_purchase(session=session, payload=payload)
+            else:
+                purchase = existing
+                if purchase.id is not None:
+                    if not _has_installment_schedule(
+                        session=session,
+                        purchase_id=purchase.id,
+                        year_month=r.statement_year_month,
+                        installment_index=r.installment_index,
+                    ):
+                        from app.models import InstallmentSchedule
+
+                        session.add(
+                            InstallmentSchedule(
+                                purchase_id=purchase.id,
+                                year_month=r.statement_year_month,
+                                installment_index=r.installment_index,
+                                currency=CurrencyCode(r.currency),
+                                amount_original=r.installment_amount,
+                                amount_ars=None,
+                            )
+                        )
 
             mark_imported(
                 session=session,
