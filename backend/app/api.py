@@ -5,16 +5,24 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from sqlmodel import select
 
 from app.crud import (
+    calculate_monthly_balance,
+    calculate_transfers,
     create_card,
     create_debtor,
+    create_income,
+    create_monthly_budget,
     create_person,
     create_purchase,
     get_distinct_categories,
+    get_monthly_budget,
     list_cards,
     list_debtors,
     list_fx_rates,
+    list_incomes,
+    list_monthly_budgets,
     list_people,
     list_purchases,
     report_debts,
@@ -26,6 +34,7 @@ from app.crud import (
     upsert_fx_rate,
 )
 from app.db import get_session
+from app.models import Person, PurchasePayer
 from app.schemas import (
     CardCreate,
     CardRead,
@@ -42,10 +51,17 @@ from app.schemas import (
     PersonCreate,
     PersonRead,
     PurchaseCreate,
+    PurchasePayerRead,
     PurchaseRead,
     PurchaseUpdate,
     ReportMonthlyRow,
     TimelineRow,
+    MonthlyBudgetCreate,
+    MonthlyBudgetRead,
+    MonthlyBalanceResponse,
+    IncomeCreate,
+    IncomeRead,
+    TransferCalculationResponse,
 )
 
 router = APIRouter()
@@ -129,6 +145,25 @@ def get_purchases(
             page=page,
             page_size=page_size,
         )
+
+        purchase_ids = [p.id for p in purchases if p.id is not None]
+        payers_by_purchase_id: dict[int, list[PurchasePayerRead]] = {int(pid): [] for pid in purchase_ids}
+        if purchase_ids:
+            payer_rows = session.exec(
+                select(PurchasePayer, Person)
+                .join(Person, Person.id == PurchasePayer.person_id)
+                .where(PurchasePayer.purchase_id.in_(purchase_ids))
+            ).all()
+            for payer, person in payer_rows:
+                payers_by_purchase_id[int(payer.purchase_id)].append(
+                    PurchasePayerRead(
+                        person_id=int(payer.person_id),
+                        person_name=person.name,
+                        share_type=payer.share_type,
+                        share_value=float(payer.share_value),
+                    )
+                )
+
         out: list[PurchaseRead] = []
         for p in purchases:
             if p.id is None:
@@ -150,6 +185,7 @@ def get_purchases(
                     is_refund=p.is_refund,
                     debtor_id=p.debtor_id,
                     debt_settled=p.debt_settled,
+                    payers=payers_by_purchase_id.get(int(p.id), []),
                 )
             )
         pages = math.ceil(total / page_size) if page_size > 0 else 0
@@ -241,6 +277,7 @@ def get_report_month_breakdown(
                 purchase_id=p.id,
                 purchase_date=p.purchase_date,
                 description=p.description,
+                notes=p.notes,
                 category=p.category,
                 installment_index=sch.installment_index,
                 installments_total=p.installments_total,
@@ -355,3 +392,91 @@ def post_fx_rate(payload: FxRateUpsert) -> FxRateRead:
             currency=fx.currency,
             rate_to_ars=float(fx.rate_to_ars),
         )
+
+
+@router.get("/budgets", response_model=list[MonthlyBudgetRead])
+def get_budgets() -> list[MonthlyBudgetRead]:
+    with get_session() as session:
+        budgets = list_monthly_budgets(session=session)
+        return [
+            MonthlyBudgetRead(
+                id=b.id,
+                year_month=b.year_month,
+                total_income=float(b.total_income),
+                notes=b.notes
+            )
+            for b in budgets
+            if b.id is not None
+        ]
+
+
+@router.post("/budgets", response_model=MonthlyBudgetRead)
+def post_budget(payload: MonthlyBudgetCreate) -> MonthlyBudgetRead:
+    with get_session() as session:
+        budget = create_monthly_budget(session=session, payload=payload)
+        if budget.id is None:
+            raise HTTPException(status_code=500, detail="Failed to create budget")
+        return MonthlyBudgetRead(
+            id=budget.id,
+            year_month=budget.year_month,
+            total_income=float(budget.total_income),
+            notes=budget.notes
+        )
+
+
+@router.get("/reports/monthly-balance", response_model=MonthlyBalanceResponse)
+def get_monthly_balance(year_month: str) -> MonthlyBalanceResponse:
+    with get_session() as session:
+        balance = calculate_monthly_balance(session=session, year_month=year_month)
+        if balance is None:
+            raise HTTPException(status_code=404, detail="Budget not found for this month")
+        return MonthlyBalanceResponse(**balance)
+
+
+@router.get("/incomes", response_model=list[IncomeRead])
+def get_incomes(year_month: Optional[str] = None) -> list[IncomeRead]:
+    with get_session() as session:
+        incomes = list_incomes(session=session, year_month=year_month)
+        return [
+            IncomeRead(
+                id=inc.id,
+                person_id=inc.person_id,
+                person_name=session.get(Person, inc.person_id).name if inc.person_id else "Desconocido",
+                year_month=inc.year_month,
+                amount=float(inc.amount),
+                notes=inc.notes
+            )
+            for inc in incomes
+            if inc.id is not None
+        ]
+
+
+@router.post("/incomes", response_model=IncomeRead)
+def post_income(payload: IncomeCreate) -> IncomeRead:
+    with get_session() as session:
+        # Verify person exists
+        person = session.get(Person, payload.person_id)
+        if person is None:
+            raise HTTPException(status_code=404, detail="Person not found")
+        
+        income = create_income(session=session, payload=payload)
+        if income.id is None:
+            raise HTTPException(status_code=500, detail="Failed to create income")
+        
+        return IncomeRead(
+            id=income.id,
+            person_id=income.person_id,
+            person_name=person.name,
+            year_month=income.year_month,
+            amount=float(income.amount),
+            notes=income.notes
+        )
+
+
+@router.get("/reports/transfers", response_model=TransferCalculationResponse)
+def get_transfer_calculation(year_month: str) -> TransferCalculationResponse:
+    with get_session() as session:
+        transfers = calculate_transfers(session=session, year_month=year_month)
+        if transfers is None:
+            raise HTTPException(status_code=404, detail="No incomes found for this month")
+        return TransferCalculationResponse(**transfers)

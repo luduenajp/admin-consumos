@@ -8,6 +8,11 @@ import type {
   DebtSummaryRow,
   FxRate,
   ImportResult,
+  Income,
+  IncomeCreate,
+  MonthlyBalanceResponse,
+  MonthlyBudget,
+  MonthlyBudgetCreate,
   MonthlyReportRow,
   MonthBreakdownResponse,
   PaginatedResponse,
@@ -15,6 +20,7 @@ import type {
   Purchase,
   PurchaseUpdate,
   TimelineRow,
+  TransferCalculationResponse,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -161,4 +167,29 @@ export function importVisaPdf(payload: {
     String(payload.cardId),
   )}`
   return postForm<ImportResult>(url, formData)
+}
+
+export function fetchBudgets(): Promise<MonthlyBudget[]> {
+  return getJson<MonthlyBudget[]>('/api/budgets')
+}
+
+export function createBudget(payload: MonthlyBudgetCreate): Promise<MonthlyBudget> {
+  return postJson<MonthlyBudget>('/api/budgets', payload)
+}
+
+export function fetchMonthlyBalance(yearMonth: string): Promise<MonthlyBalanceResponse> {
+  return getJson<MonthlyBalanceResponse>(`/api/reports/monthly-balance?year_month=${yearMonth}`)
+}
+
+export function fetchIncomes(yearMonth?: string): Promise<Income[]> {
+  const url = yearMonth ? `/api/incomes?year_month=${yearMonth}` : '/api/incomes'
+  return getJson<Income[]>(url)
+}
+
+export function createIncome(payload: IncomeCreate): Promise<Income> {
+  return postJson<Income>('/api/incomes', payload)
+}
+
+export function fetchTransferCalculation(yearMonth: string): Promise<TransferCalculationResponse> {
+  return getJson<TransferCalculationResponse>(`/api/reports/transfers?year_month=${yearMonth}`)
 }

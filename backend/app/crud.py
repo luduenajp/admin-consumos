@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
+from sqlalchemy import case
 from sqlmodel import Session, col, func, select
 
 from app.models import (
@@ -10,14 +11,17 @@ from app.models import (
     CurrencyCode,
     Debtor,
     FxRate,
+    Income,
     InstallmentSchedule,
+    MonthlyBudget,
     Person,
     Purchase,
     PurchasePayer,
     ShareType,
 )
-from app.schemas import CardCreate, DebtorCreate, FxRateUpsert, PersonCreate, PurchaseCreate, PurchaseUpdate
+from app.schemas import CardCreate, DebtorCreate, FxRateUpsert, IncomeCreate, MonthlyBudgetCreate, PersonCreate, PurchaseCreate, PurchaseUpdate
 from app.utils_dates import add_months, to_year_month
+from app.importers.visa_xlsx import normalize_purchase_description
 
 
 def create_person(*, session: Session, payload: PersonCreate) -> Person:
@@ -175,6 +179,32 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
 
     session.commit()
     return purchase
+
+
+def find_existing_purchase_for_installment_import(
+    *,
+    session: Session,
+    card_id: int,
+    purchase_date: date,
+    description: str,
+    currency: CurrencyCode,
+    installments_total: int,
+    installment_amount_original: float,
+) -> Optional[Purchase]:
+    normalized = normalize_purchase_description(description=description)
+    stmt = select(Purchase).where(
+        Purchase.card_id == card_id,
+        Purchase.purchase_date == purchase_date,
+        Purchase.currency == currency,
+        Purchase.installments_total == installments_total,
+        Purchase.installment_amount_original == installment_amount_original,
+    )
+
+    candidates = list(session.exec(stmt))
+    for c in candidates:
+        if normalize_purchase_description(description=c.description) == normalized:
+            return c
+    return None
 
 
 def list_purchases(
@@ -613,3 +643,302 @@ def report_debts(*, session: Session) -> list[tuple[int, str, float, float, int]
             ))
 
     return results
+
+
+def create_monthly_budget(*, session: Session, payload: MonthlyBudgetCreate) -> MonthlyBudget:
+    # Check if budget for this month already exists
+    existing = session.exec(
+        select(MonthlyBudget).where(MonthlyBudget.year_month == payload.year_month)
+    ).first()
+    
+    if existing:
+        # Update existing budget
+        existing.total_income = payload.total_income
+        existing.notes = payload.notes
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+    
+    # Create new budget
+    budget = MonthlyBudget(
+        year_month=payload.year_month,
+        total_income=payload.total_income,
+        notes=payload.notes
+    )
+    session.add(budget)
+    session.commit()
+    session.refresh(budget)
+    return budget
+
+
+def get_monthly_budget(*, session: Session, year_month: str) -> Optional[MonthlyBudget]:
+    return session.exec(
+        select(MonthlyBudget).where(MonthlyBudget.year_month == year_month)
+    ).first()
+
+
+def list_monthly_budgets(*, session: Session) -> list[MonthlyBudget]:
+    return list(session.exec(select(MonthlyBudget).order_by(MonthlyBudget.year_month.desc())))
+
+
+def calculate_monthly_balance(*, session: Session, year_month: str) -> Optional[dict]:
+    """
+    Calculate monthly balance: income - expenses = surplus for each person
+    """
+    # Get budget for the month
+    budget = get_monthly_budget(session=session, year_month=year_month)
+    if not budget:
+        return None
+    
+    # Get total expenses for the month (sum of all installments)
+    # If amount_ars is NULL but currency is ARS, fall back to amount_original.
+    # If currency is USD and amount_ars is NULL, we exclude it (requires FX).
+    amount_ars_or_ars_original = case(
+        (InstallmentSchedule.amount_ars.is_not(None), InstallmentSchedule.amount_ars),
+        (InstallmentSchedule.currency == CurrencyCode.ARS, InstallmentSchedule.amount_original),
+        else_=None,
+    )
+    expenses_query = (
+        select(func.sum(amount_ars_or_ars_original))
+        .where(InstallmentSchedule.year_month == year_month)
+    )
+    total_expenses = float(session.exec(expenses_query).first() or 0.0)
+    
+    # Calculate surplus
+    surplus_total = budget.total_income - total_expenses
+    surplus_per_person = surplus_total / 2
+    percentage_spent = (total_expenses / budget.total_income) * 100 if budget.total_income > 0 else 0
+    
+    return {
+        "year_month": year_month,
+        "presupuesto": budget.total_income,
+        "gastos_acumulados": total_expenses,
+        "sobrante_total": surplus_total,
+        "sobrante_por_persona": surplus_per_person,
+        "porcentaje_gastado": percentage_spent
+    }
+
+
+def create_income(*, session: Session, payload: IncomeCreate) -> Income:
+    # Check if income for this person and month already exists
+    existing = session.exec(
+        select(Income).where(
+            Income.person_id == payload.person_id,
+            Income.year_month == payload.year_month
+        )
+    ).first()
+    
+    if existing:
+        # Update existing income
+        existing.amount = payload.amount
+        existing.notes = payload.notes
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+    
+    # Create new income
+    income = Income(
+        person_id=payload.person_id,
+        year_month=payload.year_month,
+        amount=payload.amount,
+        notes=payload.notes
+    )
+    session.add(income)
+    session.commit()
+    session.refresh(income)
+    
+    # Update or create monthly budget
+    _update_monthly_budget_from_incomes(session=session, year_month=payload.year_month)
+    
+    return income
+
+
+def list_incomes(*, session: Session, year_month: Optional[str] = None) -> list[Income]:
+    query = select(Income).join(Person).order_by(Income.year_month.desc(), Person.name)
+    if year_month:
+        query = query.where(Income.year_month == year_month)
+    return list(session.exec(query))
+
+
+def _update_monthly_budget_from_incomes(*, session: Session, year_month: str):
+    """Update MonthlyBudget based on sum of incomes for the month"""
+    incomes_query = (
+        select(func.sum(Income.amount))
+        .where(Income.year_month == year_month)
+    )
+    total_income = session.exec(incomes_query).first() or 0.0
+    
+    if total_income > 0:
+        # Create or update budget
+        existing_budget = session.exec(
+            select(MonthlyBudget).where(MonthlyBudget.year_month == year_month)
+        ).first()
+        
+        if existing_budget:
+            existing_budget.total_income = total_income
+            session.add(existing_budget)
+        else:
+            budget = MonthlyBudget(
+                year_month=year_month,
+                total_income=total_income,
+                notes="Calculado automáticamente desde ingresos"
+            )
+            session.add(budget)
+        
+        session.commit()
+
+
+def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
+    """
+    Calculate who should transfer money to whom based on:
+    1. Individual incomes
+    2. Shared expenses (50/50 split)
+    3. Who actually paid for each expense
+    """
+    # Get incomes for the month
+    incomes_query = (
+        select(Income.id, Income.person_id, Income.amount, Person.name)
+        .join(Person)
+        .where(Income.year_month == year_month)
+    )
+    incomes_data = session.exec(incomes_query).all()
+    
+    if not incomes_data:
+        return None
+    
+    # Format incomes
+    ingresos = [
+        {
+            "person_id": person_id,
+            "person_name": name,
+            "amount": float(amount)
+        }
+        for _, person_id, amount, name in incomes_data
+    ]
+    
+    total_ingresos = sum(inc["amount"] for inc in ingresos)
+    
+    # Get total shared expenses for the month
+    amount_ars_or_ars_original = case(
+        (InstallmentSchedule.amount_ars.is_not(None), InstallmentSchedule.amount_ars),
+        (InstallmentSchedule.currency == CurrencyCode.ARS, InstallmentSchedule.amount_original),
+        else_=None,
+    )
+    expenses_query = (
+        select(func.sum(amount_ars_or_ars_original))
+        .where(InstallmentSchedule.year_month == year_month)
+    )
+    total_expenses = float(session.exec(expenses_query).first() or 0.0)
+
+    # Compute paid amounts per person for this month.
+    # Rule:
+    # - If Purchase has PurchasePayer rows, allocate the installment amount using those shares.
+    # - Otherwise, allocate 100% to purchase.owner_person_id (default behavior).
+    schedule_rows = session.exec(
+        select(
+            InstallmentSchedule.purchase_id,
+            amount_ars_or_ars_original,
+            Purchase.owner_person_id,
+            Purchase.card_id,
+            Card.owner_person_id,
+        )
+        .join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
+        .join(Card, Card.id == Purchase.card_id)
+        .where(InstallmentSchedule.year_month == year_month)
+    ).all()
+
+    paid_amount_by_person_id: dict[int, float] = {inc["person_id"]: 0.0 for inc in ingresos}
+
+    purchase_ids = sorted({pid for pid, _, _, _, _ in schedule_rows})
+    payers_by_purchase_id: dict[int, list[PurchasePayer]] = {}
+    if purchase_ids:
+        payers = list(session.exec(select(PurchasePayer).where(PurchasePayer.purchase_id.in_(purchase_ids))))
+        for payer in payers:
+            payers_by_purchase_id.setdefault(payer.purchase_id, []).append(payer)
+
+    for purchase_id, amount_ars, owner_person_id, _card_id, card_owner_person_id in schedule_rows:
+        installment_amount = float(amount_ars or 0.0)
+        if installment_amount == 0.0:
+            continue
+
+        payer_person_id = owner_person_id if owner_person_id is not None else card_owner_person_id
+
+        payers = payers_by_purchase_id.get(purchase_id, [])
+        if not payers:
+            if payer_person_id is not None:
+                paid_amount_by_person_id.setdefault(payer_person_id, 0.0)
+                paid_amount_by_person_id[payer_person_id] += installment_amount
+            continue
+
+        fixed_payers = [p for p in payers if p.share_type == ShareType.FIXED]
+        percent_payers = [p for p in payers if p.share_type == ShareType.PERCENT]
+
+        fixed_total = sum(float(p.share_value) for p in fixed_payers)
+        remaining = max(installment_amount - fixed_total, 0.0)
+
+        for p in fixed_payers:
+            paid_amount_by_person_id.setdefault(p.person_id, 0.0)
+            paid_amount_by_person_id[p.person_id] += min(float(p.share_value), installment_amount)
+
+        if percent_payers:
+            percent_sum = sum(float(p.share_value) for p in percent_payers)
+            for p in percent_payers:
+                paid_amount_by_person_id.setdefault(p.person_id, 0.0)
+                paid_amount_by_person_id[p.person_id] += remaining * (float(p.share_value) / percent_sum)
+        else:
+            # If only fixed payers exist and there's remaining, assign remaining to owner as fallback.
+            if remaining > 0 and payer_person_id is not None:
+                paid_amount_by_person_id.setdefault(payer_person_id, 0.0)
+                paid_amount_by_person_id[payer_person_id] += remaining
+
+    # Calculate what each person should pay (50/50 split)
+    should_pay_per_person = total_expenses / 2 if total_expenses > 0 else 0.0
+
+    person_name_by_id = {inc["person_id"]: inc["person_name"] for inc in ingresos}
+    gastos_por_persona = []
+    for person_id in sorted(person_name_by_id.keys()):
+        paid_amount = float(paid_amount_by_person_id.get(person_id, 0.0))
+        difference = paid_amount - should_pay_per_person
+        gastos_por_persona.append({
+            "person_id": person_id,
+            "person_name": person_name_by_id[person_id],
+            "paid_amount": round(paid_amount, 2),
+            "should_pay": round(should_pay_per_person, 2),
+            "difference": round(difference, 2),
+        })
+    
+    # Calculate transfers
+    transferencias = []
+    
+    # People who paid more than they should (should receive money)
+    debtors = [gp for gp in gastos_por_persona if gp["difference"] > 0]
+    # People who paid less than they should (should pay money)
+    creditors = [gp for gp in gastos_por_persona if gp["difference"] < 0]
+    
+    # Simple transfer calculation
+    for debtor in debtors:
+        remaining_to_receive = debtor["difference"]
+        for creditor in creditors:
+            if remaining_to_receive <= 0:
+                break
+            
+            creditor_needs = abs(creditor["difference"])
+            transfer_amount = min(remaining_to_receive, creditor_needs)
+            
+            if transfer_amount > 0:
+                transferencias.append({
+                    "from_person": creditor["person_name"],
+                    "to_person": debtor["person_name"],
+                    "amount": round(transfer_amount, 2)
+                })
+                remaining_to_receive -= transfer_amount
+    
+    return {
+        "year_month": year_month,
+        "ingresos": ingresos,
+        "total_ingresos": total_ingresos,
+        "gastos_por_persona": gastos_por_persona,
+        "transferencias": transferencias
+    }

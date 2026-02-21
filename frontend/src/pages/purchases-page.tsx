@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { fetchPeople, fetchPurchases, fetchCategories, fetchDebtors, updatePurchase } from '../api/endpoints'
+import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { PurchaseUpdate } from '../api/types'
 import { Spinner } from '../components/Spinner'
@@ -62,7 +62,6 @@ const PAGE_SIZE = 50
 
 export function PurchasesPage() {
   // Filter state
-  const [category, setCategory] = useState<string>('')
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [minAmount, setMinAmount] = useState<string>('')
@@ -76,7 +75,6 @@ export function PurchasesPage() {
 
   // Build filters object (include pagination)
   const filters = {
-    category: category || undefined,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     minAmount: minAmount ? parseFloat(minAmount) : undefined,
@@ -93,11 +91,6 @@ export function PurchasesPage() {
     queryFn: () => fetchPurchases(filters),
   })
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: fetchCategories,
-  })
-
   const { data: debtorsData } = useQuery({
     queryKey: ['debtors'],
     queryFn: fetchDebtors,
@@ -108,22 +101,37 @@ export function PurchasesPage() {
     queryFn: fetchPeople,
   })
 
-  const categories = categoriesData?.categories ?? []
+  const { data: cardsData } = useQuery({
+    queryKey: ['cards'],
+    queryFn: fetchCards,
+  })
+
   const debtors = debtorsData ?? []
   const people = peopleData ?? []
+  const cards = cardsData ?? []
+
+  const cardNameById = new Map(cards.map((c) => [c.id, c.name]))
+
+  const formatPayers = (payers: { person_name: string; share_type: string; share_value: number }[]) => {
+    if (!payers || payers.length === 0) return '-'
+    return payers
+      .map((p) => {
+        if (p.share_type === 'percent') return `${p.person_name} (${p.share_value}%)`
+        return `${p.person_name} ($${p.share_value})`
+      })
+      .join(', ')
+  }
 
   // Mutation for inline editing
   const patchMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: PurchaseUpdate }) => updatePurchase(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] })
-      queryClient.invalidateQueries({ queryKey: ['categories'] })
       queryClient.invalidateQueries({ queryKey: ['reports'] })
     },
   })
 
   const handleReset = () => {
-    setCategory('')
     setStartDate('')
     setEndDate('')
     setMinAmount('')
@@ -166,26 +174,6 @@ export function PurchasesPage() {
         <div className="panelTitle">Filtros</div>
         <div style={{ display: 'grid', gap: '12px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div className="formRow">
-              <label className="label">Categoría</label>
-              <select
-                className="input"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value)
-                  setPage(1)
-                }}
-              >
-                <option value="">Todas</option>
-                <option value="null">Sin categoría</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="formRow">
               <label className="label">Descripción</label>
               <input
@@ -320,9 +308,10 @@ export function PurchasesPage() {
               <thead>
                 <tr>
                   <th>Fecha</th>
+                  <th>Tarjeta</th>
                   <th>Descripción</th>
+                  <th>Pagó</th>
                   <th>Detalle</th>
-                  <th>Categoría</th>
                   <th>Moneda</th>
                   <th>Monto</th>
                   <th>Cuotas</th>
@@ -334,7 +323,9 @@ export function PurchasesPage() {
                 {rows.map((p) => (
                   <tr key={p.id}>
                     <td>{p.purchase_date}</td>
+                    <td>{cardNameById.get(p.card_id) ?? `#${p.card_id}`}</td>
                     <td>{p.description}</td>
+                    <td>{formatPayers(p.payers)}</td>
                     <td>
                       <EditableCell
                         value={p.notes}
@@ -342,17 +333,6 @@ export function PurchasesPage() {
                         onSave={(val) => {
                           if (val !== (p.notes ?? '')) {
                             patchMutation.mutate({ id: p.id, payload: { notes: val || null } })
-                          }
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <EditableCell
-                        value={p.category}
-                        placeholder="Sin categoría"
-                        onSave={(val) => {
-                          if (val !== (p.category ?? '')) {
-                            patchMutation.mutate({ id: p.id, payload: { category: val || null } })
                           }
                         }}
                       />

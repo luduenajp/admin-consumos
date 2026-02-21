@@ -91,3 +91,18 @@ class ImportedRow(SQLModel, table=True):
     source_file: str
     row_fingerprint: str = Field(index=True, unique=True)
     parsed_payload_json: str
+
+
+class MonthlyBudget(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    year_month: str = Field(unique=True, index=True)  # YYYY-MM
+    total_income: float
+    notes: Optional[str] = None
+
+
+class Income(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    person_id: int = Field(foreign_key="person.id", index=True)
+    year_month: str = Field(index=True)  # YYYY-MM
+    amount: float
+    notes: Optional[str] = None
