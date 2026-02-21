@@ -1,4 +1,4 @@
-import { getJson, patchJson, postForm, postJson } from './http'
+import { deleteHttp, getJson, patchJson, postForm, postJson } from './http'
 import type {
   Card,
   CategoryRead,
@@ -7,6 +7,7 @@ import type {
   DebtorCreate,
   DebtSummaryRow,
   FxRate,
+  GSheetsImportRequest,
   ImportResult,
   Income,
   IncomeCreate,
@@ -123,6 +124,10 @@ export function updatePurchase(id: number, payload: PurchaseUpdate): Promise<Pur
   return patchJson<Purchase>(`/api/purchases/${id}`, payload)
 }
 
+export function deletePurchase(id: number): Promise<void> {
+  return deleteHttp(`/api/purchases/${id}`)
+}
+
 export function fetchDebtors(): Promise<Debtor[]> {
   return getJson<Debtor[]>('/api/debtors')
 }
@@ -192,4 +197,8 @@ export function createIncome(payload: IncomeCreate): Promise<Income> {
 
 export function fetchTransferCalculation(yearMonth: string): Promise<TransferCalculationResponse> {
   return getJson<TransferCalculationResponse>(`/api/reports/transfers?year_month=${yearMonth}`)
+}
+
+export function importGSheets(payload: GSheetsImportRequest): Promise<ImportResult> {
+  return postJson<ImportResult>('/api/import/gsheets', payload)
 }

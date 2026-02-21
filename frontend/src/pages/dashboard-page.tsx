@@ -137,11 +137,26 @@ export function DashboardPage() {
           <div className="muted">Sin datos</div>
         ) : (
           <>
-            <div style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '16px' }}>
-              Total del mes:{' '}
-              <span style={{ color: 'var(--color-primary)' }}>
-                ${monthBreakdownData.total_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS
-              </span>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+                Total del mes:{' '}
+                <span style={{ color: 'var(--color-primary)' }}>
+                  ${monthBreakdownData.total_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS
+                </span>
+              </div>
+              {monthBreakdownData.items.some((i) => i.debtor_id) && (
+                <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+                  Total Deudas:{' '}
+                  <span style={{ color: 'var(--color-error)' }}>
+                    $
+                    {monthBreakdownData.items
+                      .filter((i) => i.debtor_id && !i.debt_settled)
+                      .reduce((sum, i) => sum + i.amount_ars, 0)
+                      .toLocaleString('es-AR', { maximumFractionDigits: 2 })}{' '}
+                    ARS
+                  </span>
+                </div>
+              )}
             </div>
             {monthBreakdownData.items.length === 0 ? (
               <div className="muted">Sin cuotas que venzan en este mes</div>
@@ -153,6 +168,7 @@ export function DashboardPage() {
                       <th>Fecha compra</th>
                       <th>Descripción</th>
                       <th>Detalle</th>
+                      <th>Deudor</th>
                       <th>Cuota</th>
                       <th style={{ textAlign: 'right' }}>Monto (ARS)</th>
                     </tr>
@@ -163,6 +179,15 @@ export function DashboardPage() {
                         <td>{row.purchase_date}</td>
                         <td>{row.description}</td>
                         <td>{row.notes ?? '-'}</td>
+                        <td>
+                          {row.debtor_name ? (
+                            <span style={{ color: row.debt_settled ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 500 }}>
+                              {row.debtor_name} {row.debt_settled ? '(Saldado)' : ''}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
                         <td>
                           {row.installment_index}/{row.installments_total}
                         </td>

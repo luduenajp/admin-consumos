@@ -4,7 +4,7 @@ import math
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from sqlmodel import select
 
 from app.crud import (
@@ -30,6 +30,7 @@ from app.crud import (
     report_month_breakdown,
     report_monthly_totals_converted,
     report_spending_by_category,
+    delete_purchase,
     update_purchase,
     upsert_fx_rate,
 )
@@ -172,6 +173,7 @@ def get_purchases(
                 PurchaseRead(
                     id=p.id,
                     card_id=p.card_id,
+                    payment_method=p.payment_method,
                     purchase_date=p.purchase_date,
                     description=p.description,
                     currency=p.currency,
@@ -212,6 +214,7 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
         return PurchaseRead(
             id=purchase.id,
             card_id=purchase.card_id,
+            payment_method=purchase.payment_method,
             purchase_date=purchase.purchase_date,
             description=purchase.description,
             currency=purchase.currency,
@@ -228,6 +231,16 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
         )
 
 
+@router.delete("/purchases/{purchase_id}")
+def delete_purchase_endpoint(purchase_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_purchase(session=session, purchase_id=purchase_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return Response(status_code=204)
+
+
 @router.patch("/purchases/{purchase_id}", response_model=PurchaseRead)
 def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
     with get_session() as session:
@@ -242,6 +255,7 @@ def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
         return PurchaseRead(
             id=purchase.id,
             card_id=purchase.card_id,
+            payment_method=purchase.payment_method,
             purchase_date=purchase.purchase_date,
             description=purchase.description,
             currency=purchase.currency,
@@ -283,8 +297,11 @@ def get_report_month_breakdown(
                 installments_total=p.installments_total,
                 amount_ars=amt,
                 currency=str(p.currency),
+                debtor_id=p.debtor_id,
+                debtor_name=debtor_name,
+                debt_settled=p.debt_settled,
             )
-            for p, sch, amt in items
+            for p, sch, amt, debtor_name in items
             if p.id is not None
         ]
         return MonthBreakdownResponse(year_month=year_month, total_ars=total_ars, items=rows)

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase } from '../api/endpoints'
+import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase, deletePurchase } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { PurchaseUpdate } from '../api/types'
 import { Spinner } from '../components/Spinner'
@@ -125,6 +125,14 @@ export function PurchasesPage() {
   // Mutation for inline editing
   const patchMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: PurchaseUpdate }) => updatePurchase(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] })
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deletePurchase(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] })
       queryClient.invalidateQueries({ queryKey: ['reports'] })
@@ -305,119 +313,139 @@ export function PurchasesPage() {
           <>
             <div style={{ overflowX: 'auto' }}>
               <table className="table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Tarjeta</th>
-                  <th>Descripción</th>
-                  <th>Pagó</th>
-                  <th>Detalle</th>
-                  <th>Moneda</th>
-                  <th>Monto</th>
-                  <th>Cuotas</th>
-                  <th>Deudor</th>
-                  <th>Saldado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.purchase_date}</td>
-                    <td>{cardNameById.get(p.card_id) ?? `#${p.card_id}`}</td>
-                    <td>{p.description}</td>
-                    <td>{formatPayers(p.payers)}</td>
-                    <td>
-                      <EditableCell
-                        value={p.notes}
-                        placeholder="Agregar detalle..."
-                        onSave={(val) => {
-                          if (val !== (p.notes ?? '')) {
-                            patchMutation.mutate({ id: p.id, payload: { notes: val || null } })
-                          }
-                        }}
-                      />
-                    </td>
-                    <td>{p.currency}</td>
-                    <td>
-                      {p.amount_original.toLocaleString('es-AR', {
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td>{p.installments_total}</td>
-                    <td>
-                      <select
-                        className="input"
-                        style={{ padding: '4px 8px', fontSize: '0.85rem' }}
-                        value={p.debtor_id ?? ''}
-                        onChange={(e) => {
-                          const newDebtorId = e.target.value ? Number(e.target.value) : null
-                          patchMutation.mutate({
-                            id: p.id,
-                            payload: {
-                              debtor_id: newDebtorId,
-                              ...(newDebtorId === null ? { debt_settled: false } : {}),
-                            },
-                          })
-                        }}
-                      >
-                        <option value="">-</option>
-                        {debtors.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      {p.debtor_id ? (
-                        <input
-                          type="checkbox"
-                          checked={p.debt_settled}
-                          onChange={(e) => {
-                            patchMutation.mutate({ id: p.id, payload: { debt_settled: e.target.checked } })
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Medio de pago</th>
+                    <th>Descripción</th>
+                    <th>Pagó</th>
+                    <th>Detalle</th>
+                    <th>Moneda</th>
+                    <th>Monto</th>
+                    <th>Cuotas</th>
+                    <th>Deudor</th>
+                    <th>Saldado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.purchase_date}</td>
+                      <td>
+                        {p.payment_method === 'transfer' ? 'Transferencia' :
+                          p.payment_method === 'cash' ? 'Efectivo' :
+                            (p.card_id ? (cardNameById.get(p.card_id) ?? `#${p.card_id}`) : '-')}
+                      </td>
+                      <td>{p.description}</td>
+                      <td>{formatPayers(p.payers)}</td>
+                      <td>
+                        <EditableCell
+                          value={p.notes}
+                          placeholder="Agregar detalle..."
+                          onSave={(val) => {
+                            if (val !== (p.notes ?? '')) {
+                              patchMutation.mutate({ id: p.id, payload: { notes: val || null } })
+                            }
                           }}
                         />
-                      ) : (
-                        <span className="muted">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {pages > 1 ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginTop: '16px',
-                flexWrap: 'wrap',
-              }}
-            >
-              <button
-                type="button"
-                className="button"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Anterior
-              </button>
-              <span className="muted" style={{ margin: 0 }}>
-                Página {currentPage} de {pages}
-              </span>
-              <button
-                type="button"
-                className="button"
-                disabled={currentPage >= pages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Siguiente
-              </button>
+                      </td>
+                      <td>{p.currency}</td>
+                      <td>
+                        {p.amount_original.toLocaleString('es-AR', {
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td>{p.installments_total}</td>
+                      <td>
+                        <select
+                          className="input"
+                          style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                          value={p.debtor_id ?? ''}
+                          onChange={(e) => {
+                            const newDebtorId = e.target.value ? Number(e.target.value) : null
+                            patchMutation.mutate({
+                              id: p.id,
+                              payload: {
+                                debtor_id: newDebtorId,
+                                ...(newDebtorId === null ? { debt_settled: false } : {}),
+                              },
+                            })
+                          }}
+                        >
+                          <option value="">-</option>
+                          {debtors.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        {p.debtor_id ? (
+                          <input
+                            type="checkbox"
+                            checked={p.debt_settled}
+                            onChange={(e) => {
+                              patchMutation.mutate({ id: p.id, payload: { debt_settled: e.target.checked } })
+                            }}
+                          />
+                        ) : (
+                          <span className="muted">-</span>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button"
+                          style={{ padding: '4px 8px', fontSize: '0.8rem', background: '#c0392b', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm(`¿Eliminar "${p.description}"? Esta acción no se puede deshacer.`)) {
+                              deleteMutation.mutate(p.id)
+                            }
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : null}
-        </>
+            {pages > 1 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginTop: '16px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <button
+                  type="button"
+                  className="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Anterior
+                </button>
+                <span className="muted" style={{ margin: 0 }}>
+                  Página {currentPage} de {pages}
+                </span>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={currentPage >= pages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Siguiente
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </section>
