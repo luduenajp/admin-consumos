@@ -14,6 +14,12 @@ Admin Consumos es una aplicación web de uso local diseñada para gestionar gast
 - **Conversión de Moneda**: Soporte para consumos en USD con carga manual de cotizaciones mensuales para reportes precisos en ARS.
 - **Deduplicación**: Sistema basado en huellas digitales (SHA256) para evitar importar el mismo consumo dos veces.
 
+## 🛡️ Privacidad y Seguridad
+
+- **Totalmente Local**: Tus datos nunca salen de tu computadora. El procesamiento de archivos se realiza en memoria/directorios temporales locales.
+- **Sin Nube**: No hay servidores externos, bases de datos remotas ni trackers.
+- **Ignorado Automático**: El proyecto incluye un `.gitignore` configurado para evitar que tus resúmenes (`resumenes/`) y tu base de datos (`data/`) se suban accidentalmente a la nube si usas Git.
+
 ## 🏗️ Arquitectura
 
 El proyecto está organizado como un monorepositorio con backend y frontend independientes:
