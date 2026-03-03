@@ -57,6 +57,21 @@ export async function postForm<T>(input: RequestInfo, formData: FormData): Promi
   })
 }
 
+export async function deleteHttp(input: RequestInfo): Promise<void> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  try {
+    const response = await fetch(input, { method: 'DELETE', signal: controller.signal })
+    if (!response.ok && response.status !== 204) {
+      const error: HttpError = new Error(`HTTP ${response.status}`) as HttpError
+      error.status = response.status
+      throw error
+    }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'payload' in error) {
     const httpErr = error as HttpError

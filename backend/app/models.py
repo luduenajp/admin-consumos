@@ -17,6 +17,12 @@ class ShareType(StrEnum):
     FIXED = "fixed"
 
 
+class PaymentMethod(StrEnum):
+    CARD = "card"
+    TRANSFER = "transfer"
+    CASH = "cash"
+
+
 class Person(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -45,7 +51,8 @@ class FxRate(SQLModel, table=True):
 class Purchase(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    card_id: int = Field(foreign_key="card.id", index=True)
+    card_id: Optional[int] = Field(default=None, foreign_key="card.id", index=True)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.CARD, index=True)
     purchase_date: date = Field(index=True)
     description: str
 
@@ -91,3 +98,18 @@ class ImportedRow(SQLModel, table=True):
     source_file: str
     row_fingerprint: str = Field(index=True, unique=True)
     parsed_payload_json: str
+
+
+class MonthlyBudget(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    year_month: str = Field(unique=True, index=True)  # YYYY-MM
+    total_income: float
+    notes: Optional[str] = None
+
+
+class Income(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    person_id: int = Field(foreign_key="person.id", index=True)
+    year_month: str = Field(index=True)  # YYYY-MM
+    amount: float
+    notes: Optional[str] = None

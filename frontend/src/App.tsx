@@ -5,6 +5,7 @@ import { AdminPage } from './pages/admin-page'
 import { DashboardPage } from './pages/dashboard-page'
 import { ImportPage } from './pages/import-page'
 import { PurchasesPage } from './pages/purchases-page'
+import BudgetPage from './pages/budget-page'
 
 function App() {
   return (
@@ -21,6 +22,9 @@ function App() {
           <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/import">
             Importar
           </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/budget">
+            Presupuesto
+          </NavLink>
           <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/admin">
             Admin
           </NavLink>
@@ -33,6 +37,7 @@ function App() {
             <Route element={<DashboardPage />} path="/" />
             <Route element={<PurchasesPage />} path="/purchases" />
             <Route element={<ImportPage />} path="/import" />
+            <Route element={<BudgetPage />} path="/budget" />
             <Route element={<AdminPage />} path="/admin" />
           </Routes>
         </ErrorBoundary>
