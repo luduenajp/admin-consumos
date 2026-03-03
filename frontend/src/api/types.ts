@@ -20,10 +20,19 @@ export interface Card {
 }
 
 export type CurrencyCode = 'ARS' | 'USD'
+export type PaymentMethod = 'card' | 'transfer' | 'cash'
+
+export interface PurchasePayer {
+  person_id: number
+  person_name: string
+  share_type: 'percent' | 'fixed'
+  share_value: number
+}
 
 export interface Purchase {
   id: number
-  card_id: number
+  card_id?: number | null
+  payment_method: PaymentMethod
   purchase_date: string
   description: string
   currency: CurrencyCode
@@ -37,6 +46,7 @@ export interface Purchase {
   is_refund: boolean
   debtor_id?: number | null
   debt_settled: boolean
+  payers: PurchasePayer[]
 }
 
 export interface FxRate {
@@ -55,11 +65,15 @@ export interface MonthBreakdownRow {
   purchase_id: number
   purchase_date: string
   description: string
+  notes?: string | null
   category: string | null
   installment_index: number
   installments_total: number
   amount_ars: number
   currency: string
+  debtor_id?: number | null
+  debtor_name?: string | null
+  debt_settled: boolean
 }
 
 export interface MonthBreakdownResponse {
@@ -89,6 +103,28 @@ export interface FxRateUpsert {
   year_month: string
   currency: CurrencyCode
   rate_to_ars: number
+}
+
+export interface PurchaseCreate {
+  card_id?: number | null
+  payment_method: PaymentMethod
+  purchase_date: string
+  description: string
+  currency: CurrencyCode
+  amount_original: number
+  installments_total?: number
+  installment_amount_original?: number | null
+  first_installment_month?: string | null
+  owner_person_id?: number | null
+  category?: string | null
+  notes?: string | null
+  is_refund?: boolean
+  debtor_id?: number | null
+  payers?: {
+    person_id: number
+    share_type: 'percent' | 'fixed'
+    share_value: number
+  }[]
 }
 
 export interface TimelineRow {
@@ -127,4 +163,74 @@ export interface DebtSummaryRow {
   total_owed: number
   total_settled: number
   pending_purchases: number
+}
+
+export interface MonthlyBudget {
+  id: number
+  year_month: string
+  total_income: number
+  notes?: string | null
+}
+
+export interface MonthlyBudgetCreate {
+  year_month: string
+  total_income: number
+  notes?: string | null
+}
+
+export interface MonthlyBalanceResponse {
+  year_month: string
+  presupuesto: number
+  gastos_acumulados: number
+  sobrante_total: number
+  sobrante_por_persona: number
+  porcentaje_gastado: number
+}
+
+export interface MonthlyBudget {
+  id: number
+  year_month: string
+  total_income: number
+  notes?: string | null
+}
+
+export interface MonthlyBudgetCreate {
+  year_month: string
+  total_income: number
+  notes?: string | null
+}
+
+export interface Income {
+  id: number
+  person_id: number
+  person_name: string
+  year_month: string
+  amount: number
+  notes?: string | null
+}
+
+export interface IncomeCreate {
+  person_id: number
+  year_month: string
+  amount: number
+  notes?: string | null
+}
+
+export interface TransferCalculationResponse {
+  year_month: string
+  ingresos: Array<{ person_id: number, person_name: string, amount: number }>
+  total_ingresos: number
+  gastos_por_persona: Array<{
+    person_id: number
+    person_name: string
+    paid_amount: number
+    should_pay: number
+    difference: number
+  }>
+  transferencias: Array<{ from_person: string, to_person: string, amount: number }>
+}
+
+export interface GSheetsImportRequest {
+  url: string
+  owner_person_id: number
 }

@@ -1,4 +1,4 @@
-import { getJson, patchJson, postForm, postJson } from './http'
+import { deleteHttp, getJson, patchJson, postForm, postJson } from './http'
 import type {
   Card,
   CategoryRead,
@@ -7,14 +7,22 @@ import type {
   DebtorCreate,
   DebtSummaryRow,
   FxRate,
+  GSheetsImportRequest,
   ImportResult,
+  Income,
+  IncomeCreate,
+  MonthlyBalanceResponse,
+  MonthlyBudget,
+  MonthlyBudgetCreate,
   MonthlyReportRow,
   MonthBreakdownResponse,
   PaginatedResponse,
   Person,
   Purchase,
+  PurchaseCreate,
   PurchaseUpdate,
   TimelineRow,
+  TransferCalculationResponse,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -63,6 +71,10 @@ export function fetchPurchases(filters?: {
   if (filters?.pageSize !== undefined) qs.set('page_size', String(filters.pageSize))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return getJson<PaginatedResponse<Purchase>>(`/api/purchases${suffix}`)
+}
+
+export function createPurchase(payload: PurchaseCreate): Promise<Purchase> {
+  return postJson<Purchase>('/api/purchases', payload)
 }
 
 export function fetchMonthBreakdown(params: {
@@ -117,6 +129,10 @@ export function updatePurchase(id: number, payload: PurchaseUpdate): Promise<Pur
   return patchJson<Purchase>(`/api/purchases/${id}`, payload)
 }
 
+export function deletePurchase(id: number): Promise<void> {
+  return deleteHttp(`/api/purchases/${id}`)
+}
+
 export function fetchDebtors(): Promise<Debtor[]> {
   return getJson<Debtor[]>('/api/debtors')
 }
@@ -161,4 +177,33 @@ export function importVisaPdf(payload: {
     String(payload.cardId),
   )}`
   return postForm<ImportResult>(url, formData)
+}
+
+export function fetchBudgets(): Promise<MonthlyBudget[]> {
+  return getJson<MonthlyBudget[]>('/api/budgets')
+}
+
+export function createBudget(payload: MonthlyBudgetCreate): Promise<MonthlyBudget> {
+  return postJson<MonthlyBudget>('/api/budgets', payload)
+}
+
+export function fetchMonthlyBalance(yearMonth: string): Promise<MonthlyBalanceResponse> {
+  return getJson<MonthlyBalanceResponse>(`/api/reports/monthly-balance?year_month=${yearMonth}`)
+}
+
+export function fetchIncomes(yearMonth?: string): Promise<Income[]> {
+  const url = yearMonth ? `/api/incomes?year_month=${yearMonth}` : '/api/incomes'
+  return getJson<Income[]>(url)
+}
+
+export function createIncome(payload: IncomeCreate): Promise<Income> {
+  return postJson<Income>('/api/incomes', payload)
+}
+
+export function fetchTransferCalculation(yearMonth: string): Promise<TransferCalculationResponse> {
+  return getJson<TransferCalculationResponse>(`/api/reports/transfers?year_month=${yearMonth}`)
+}
+
+export function importGSheets(payload: GSheetsImportRequest): Promise<ImportResult> {
+  return postJson<ImportResult>('/api/import/gsheets', payload)
 }

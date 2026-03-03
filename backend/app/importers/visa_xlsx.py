@@ -76,6 +76,22 @@ _installments_re = re.compile(r"^(\d+)\s*de\s*(\d+)$", re.IGNORECASE)
 _installments_c_re = re.compile(r"C\.(\d+)/(\d+)", re.IGNORECASE)  # Banco Nación: C.17/24
 _installments_de_re = re.compile(r"(\d+)\s+de\s+(\d+)", re.IGNORECASE)  # MercadoPago: "3 de 3" en medio
 
+_purchase_desc_cleanup_re = re.compile(
+    r"\b(?:C\.)\s*\d+\s*/\s*\d+\b|\b\d+\s*de\s*\d+\b",
+    re.IGNORECASE,
+)
+
+_purchase_desc_leading_code_re = re.compile(r"^\s*\d{3,}\s+")
+_purchase_desc_trailing_code_re = re.compile(r"\s+\d{3,}\s*$")
+
+
+def normalize_purchase_description(*, description: str) -> str:
+    cleaned = _purchase_desc_cleanup_re.sub(" ", description)
+    cleaned = _purchase_desc_leading_code_re.sub("", cleaned)
+    cleaned = _purchase_desc_trailing_code_re.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
 
 def _parse_installments(value: object) -> tuple[int, int]:
     if value is None:
@@ -113,12 +129,16 @@ def _is_excluded_description(description: str) -> bool:
         "cr.",
         "cr ",
         "total de",
+        "total",
         "tarjeta de",
         "tarjeta visa",
         "movimientos del resumen",
         "bonif.",  # bonificaciones / devoluciones por beneficios
     )
     if d.startswith(excluded_prefixes):
+        return True
+    # Excluir filas que contengan "total" en cualquier parte
+    if "total" in d:
         return True
     # Excluir impuestos (DB.RG 5617, IIBB PERCEP, IMPUESTO DE SELLOS)
     # No excluir devoluciones por compra anulada
@@ -163,14 +183,22 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
     df = df.dropna(how="all")
 
     out: list[ParsedPurchaseRow] = []
+    last_date: Optional[date] = None
 
     for _, r in df.iterrows():
+        # Try to get date from current row
         d = _parse_ddmmyyyy(r.get("Fecha"))
+        
+        # If no date in current row, use the last date we saw
         if d is None:
-            continue
+            if last_date is None:
+                continue  # Skip if we don't have any date yet
+            d = last_date
+        else:
+            last_date = d
 
         description = str(r.get("Descripción") or "").strip()
-        if not description:
+        if not description or description.lower() == 'nan':
             continue
 
         if _is_excluded_description(description):
@@ -223,6 +251,20 @@ def compute_row_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseR
         "installments_total": row.installments_total,
         "installment_amount": row.installment_amount,
         "statement_year_month": row.statement_year_month,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def compute_purchase_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseRow) -> str:
+    payload = {
+        "provider": provider,
+        "card_id": card_id,
+        "purchase_date": row.purchase_date.isoformat(),
+        "description": normalize_purchase_description(description=row.description),
+        "currency": row.currency,
+        "installments_total": row.installments_total,
+        "installment_amount": row.installment_amount,
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()

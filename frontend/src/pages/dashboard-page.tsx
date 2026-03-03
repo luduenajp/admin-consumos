@@ -6,13 +6,13 @@ import {
   fetchMonthBreakdown,
   fetchMonthlyReport,
   fetchTimeline,
-  fetchCategorySpending,
   fetchDebtReport,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import { CategoryChart } from '../components/CategoryChart'
 import { Spinner } from '../components/Spinner'
 import { TimelineChart } from '../components/TimelineChart'
+import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
+import { TransferCalculationCard } from '../components/TransferCalculationCard'
 
 function getCurrentYearMonth(): string {
   const now = new Date()
@@ -51,11 +51,6 @@ export function DashboardPage() {
   const { data: timelineData, isLoading: timelineLoading } = useQuery({
     queryKey: ['reports', 'timeline', { personId }],
     queryFn: () => fetchTimeline({ monthsAhead: 12, personId }),
-  })
-
-  const { data: categoryData, isLoading: categoryLoading } = useQuery({
-    queryKey: ['reports', 'category-spending', { personId }],
-    queryFn: () => fetchCategorySpending({ personId }),
   })
 
   const { data: debtData, isLoading: debtLoading } = useQuery({
@@ -125,6 +120,12 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* Monthly Balance Card */}
+      <MonthlyBalanceCard yearMonth={monthFilter} />
+
+      {/* Transfer Calculation Card */}
+      <TransferCalculationCard yearMonth={monthFilter} />
+
       {/* Resumen del mes seleccionado */}
       <div className="panel">
         <div className="panelTitle">Resumen del mes ({monthOptions.find((m) => m.value === monthFilter)?.label ?? monthFilter})</div>
@@ -136,11 +137,26 @@ export function DashboardPage() {
           <div className="muted">Sin datos</div>
         ) : (
           <>
-            <div style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '16px' }}>
-              Total del mes:{' '}
-              <span style={{ color: 'var(--color-primary)' }}>
-                ${monthBreakdownData.total_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS
-              </span>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+                Total del mes:{' '}
+                <span style={{ color: 'var(--color-primary)' }}>
+                  ${monthBreakdownData.total_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS
+                </span>
+              </div>
+              {monthBreakdownData.items.some((i) => i.debtor_id) && (
+                <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+                  Total Deudas:{' '}
+                  <span style={{ color: 'var(--color-error)' }}>
+                    $
+                    {monthBreakdownData.items
+                      .filter((i) => i.debtor_id && !i.debt_settled)
+                      .reduce((sum, i) => sum + i.amount_ars, 0)
+                      .toLocaleString('es-AR', { maximumFractionDigits: 2 })}{' '}
+                    ARS
+                  </span>
+                </div>
+              )}
             </div>
             {monthBreakdownData.items.length === 0 ? (
               <div className="muted">Sin cuotas que venzan en este mes</div>
@@ -151,7 +167,8 @@ export function DashboardPage() {
                     <tr>
                       <th>Fecha compra</th>
                       <th>Descripción</th>
-                      <th>Categoría</th>
+                      <th>Detalle</th>
+                      <th>Deudor</th>
                       <th>Cuota</th>
                       <th style={{ textAlign: 'right' }}>Monto (ARS)</th>
                     </tr>
@@ -161,7 +178,16 @@ export function DashboardPage() {
                       <tr key={`${row.purchase_id}-${row.installment_index}`}>
                         <td>{row.purchase_date}</td>
                         <td>{row.description}</td>
-                        <td>{row.category ?? '-'}</td>
+                        <td>{row.notes ?? '-'}</td>
+                        <td>
+                          {row.debtor_name ? (
+                            <span style={{ color: row.debt_settled ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 500 }}>
+                              {row.debtor_name} {row.debt_settled ? '(Saldado)' : ''}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
                         <td>
                           {row.installment_index}/{row.installments_total}
                         </td>
@@ -180,25 +206,13 @@ export function DashboardPage() {
 
       {/* Timeline Panel */}
       <div className="panel">
-        <div className="panelTitle">Cuotas Futuras (próximos 12 meses)</div>
+        <div className="panelTitle">Cuotas Futuras (3 meses anteriores + 12 futuros)</div>
         {timelineLoading ? (
           <div className="loadingContainer">
             <Spinner size={28} />
           </div>
         ) : (
           <TimelineChart data={timelineData ?? []} />
-        )}
-      </div>
-
-      {/* Category Distribution Panel */}
-      <div className="panel">
-        <div className="panelTitle">Distribución por Categoría</div>
-        {categoryLoading ? (
-          <div className="loadingContainer">
-            <Spinner size={28} />
-          </div>
-        ) : (
-          <CategoryChart data={categoryData ?? []} />
         )}
       </div>
 

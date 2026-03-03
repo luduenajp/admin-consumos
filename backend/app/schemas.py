@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 T = TypeVar("T")
 
-from app.models import CurrencyCode, ShareType
+from app.models import CurrencyCode, PaymentMethod, ShareType
 
 
 class PersonCreate(BaseModel):
@@ -40,8 +40,16 @@ class PurchasePayerCreate(BaseModel):
     share_value: float = Field(gt=0)
 
 
+class PurchasePayerRead(BaseModel):
+    person_id: int
+    person_name: str
+    share_type: ShareType
+    share_value: float
+
+
 class PurchaseCreate(BaseModel):
-    card_id: int
+    card_id: Optional[int] = None
+    payment_method: PaymentMethod = PaymentMethod.CARD
     purchase_date: date
     description: str
 
@@ -57,8 +65,15 @@ class PurchaseCreate(BaseModel):
     notes: Optional[str] = None
 
     is_refund: bool = False
+    debtor_id: Optional[int] = None
 
     payers: Optional[list[PurchasePayerCreate]] = None
+
+    @model_validator(mode="after")
+    def _validate_card_presence(self) -> "PurchaseCreate":
+        if self.payment_method == PaymentMethod.CARD and self.card_id is None:
+            raise ValueError("card_id is required for CARD payment method")
+        return self
 
     @model_validator(mode="after")
     def _validate_payer_shares(self) -> "PurchaseCreate":
@@ -82,7 +97,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
 class PurchaseRead(BaseModel):
     id: int
-    card_id: int
+    card_id: Optional[int]
+    payment_method: PaymentMethod
     purchase_date: date
     description: str
     currency: CurrencyCode
@@ -96,6 +112,7 @@ class PurchaseRead(BaseModel):
     is_refund: bool
     debtor_id: Optional[int]
     debt_settled: bool
+    payers: list[PurchasePayerRead] = Field(default_factory=list)
 
 
 class ReportMonthlyRow(BaseModel):
@@ -118,17 +135,26 @@ class MonthBreakdownRow(BaseModel):
     purchase_id: int
     purchase_date: date
     description: str
+    notes: Optional[str] = None
     category: Optional[str]
     installment_index: int
     installments_total: int
     amount_ars: float
     currency: str
+    debtor_id: Optional[int] = None
+    debtor_name: Optional[str] = None
+    debt_settled: bool = False
 
 
 class MonthBreakdownResponse(BaseModel):
     year_month: str
     total_ars: float
     items: list[MonthBreakdownRow]
+
+
+class GSheetsImportRequest(BaseModel):
+    url: str
+    owner_person_id: int
 
 
 class CategorySpendingRow(BaseModel):
@@ -171,3 +197,49 @@ class FxRateRead(BaseModel):
     year_month: str
     currency: CurrencyCode
     rate_to_ars: float
+
+
+class MonthlyBudgetCreate(BaseModel):
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    total_income: float = Field(gt=0)
+    notes: Optional[str] = None
+
+
+class MonthlyBudgetRead(BaseModel):
+    id: int
+    year_month: str
+    total_income: float
+    notes: Optional[str]
+
+
+class MonthlyBalanceResponse(BaseModel):
+    year_month: str
+    presupuesto: float
+    gastos_acumulados: float
+    sobrante_total: float
+    sobrante_por_persona: float
+    porcentaje_gastado: float
+
+
+class IncomeCreate(BaseModel):
+    person_id: int
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    amount: float = Field(gt=0)
+    notes: Optional[str] = None
+
+
+class IncomeRead(BaseModel):
+    id: int
+    person_id: int
+    person_name: str
+    year_month: str
+    amount: float
+    notes: Optional[str]
+
+
+class TransferCalculationResponse(BaseModel):
+    year_month: str
+    ingresos: list[dict]  # [{person_id, person_name, amount}]
+    total_ingresos: float
+    gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
+    transferencias: list[dict]  # [{from_person, to_person, amount}]
