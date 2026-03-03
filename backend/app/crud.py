@@ -212,13 +212,17 @@ def find_existing_purchase_for_installment_import(
         Purchase.purchase_date == purchase_date,
         Purchase.currency == currency,
         Purchase.installments_total == installments_total,
-        Purchase.installment_amount_original == installment_amount_original,
     )
 
     candidates = list(session.exec(stmt))
     for c in candidates:
         if normalize_purchase_description(description=c.description) == normalized:
-            return c
+            # Be tolerant to small differences in installment_amount_original (centavos)
+            # Accept if difference is less than 1% or less than 0.01 units
+            diff = abs(c.installment_amount_original - installment_amount_original)
+            relative_diff = diff / installment_amount_original if installment_amount_original != 0 else 0
+            if diff <= 0.01 or relative_diff <= 0.01:
+                return c
     return None
 
 
@@ -568,21 +572,23 @@ def report_installment_timeline(
     *,
     session: Session,
     months_ahead: int = 12,
+    months_behind: int = 3,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
 ) -> list[tuple[str, float]]:
     """
-    Return timeline of future installments (year_month -> total_ars).
-    Excludes past months, shows only future commitments.
+    Return timeline of installments (year_month -> total_ars).
+    Includes 3 months behind current month and 12 months ahead.
     """
     current_ym = to_year_month(date.today())
+    start_ym = add_months(current_ym, -months_behind)
     end_ym = add_months(current_ym, months_ahead)
 
     fx_map = _fx_rate_map(session=session)
 
     # Query InstallmentSchedule filtered by year_month range
     stmt = select(InstallmentSchedule).where(
-        InstallmentSchedule.year_month >= current_ym, InstallmentSchedule.year_month <= end_ym
+        InstallmentSchedule.year_month >= start_ym, InstallmentSchedule.year_month <= end_ym
     )
 
     # Apply card filter
@@ -762,24 +768,7 @@ def calculate_monthly_balance(*, session: Session, year_month: str) -> Optional[
 
 
 def create_income(*, session: Session, payload: IncomeCreate) -> Income:
-    # Check if income for this person and month already exists
-    existing = session.exec(
-        select(Income).where(
-            Income.person_id == payload.person_id,
-            Income.year_month == payload.year_month
-        )
-    ).first()
-    
-    if existing:
-        # Update existing income
-        existing.amount = payload.amount
-        existing.notes = payload.notes
-        session.add(existing)
-        session.commit()
-        session.refresh(existing)
-        return existing
-    
-    # Create new income
+    # Create new income (allow multiple incomes per person/month)
     income = Income(
         person_id=payload.person_id,
         year_month=payload.year_month,

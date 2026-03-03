@@ -129,12 +129,16 @@ def _is_excluded_description(description: str) -> bool:
         "cr.",
         "cr ",
         "total de",
+        "total",
         "tarjeta de",
         "tarjeta visa",
         "movimientos del resumen",
         "bonif.",  # bonificaciones / devoluciones por beneficios
     )
     if d.startswith(excluded_prefixes):
+        return True
+    # Excluir filas que contengan "total" en cualquier parte
+    if "total" in d:
         return True
     # Excluir impuestos (DB.RG 5617, IIBB PERCEP, IMPUESTO DE SELLOS)
     # No excluir devoluciones por compra anulada
@@ -179,14 +183,22 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
     df = df.dropna(how="all")
 
     out: list[ParsedPurchaseRow] = []
+    last_date: Optional[date] = None
 
     for _, r in df.iterrows():
+        # Try to get date from current row
         d = _parse_ddmmyyyy(r.get("Fecha"))
+        
+        # If no date in current row, use the last date we saw
         if d is None:
-            continue
+            if last_date is None:
+                continue  # Skip if we don't have any date yet
+            d = last_date
+        else:
+            last_date = d
 
         description = str(r.get("Descripción") or "").strip()
-        if not description:
+        if not description or description.lower() == 'nan':
             continue
 
         if _is_excluded_description(description):

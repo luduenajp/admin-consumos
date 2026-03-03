@@ -206,7 +206,7 @@ export function DashboardPage() {
 
       {/* Timeline Panel */}
       <div className="panel">
-        <div className="panelTitle">Cuotas Futuras (próximos 12 meses)</div>
+        <div className="panelTitle">Cuotas Futuras (3 meses anteriores + 12 futuros)</div>
         {timelineLoading ? (
           <div className="loadingContainer">
             <Spinner size={28} />
