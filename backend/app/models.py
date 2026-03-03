@@ -69,6 +69,7 @@ class Purchase(SQLModel, table=True):
     notes: Optional[str] = None
 
     is_refund: bool = Field(default=False)
+    is_common: bool = Field(default=False)
 
     debtor_id: Optional[int] = Field(default=None, foreign_key="debtor.id", index=True)
     debt_settled: bool = Field(default=False)

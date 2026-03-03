@@ -149,6 +149,7 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
         category=payload.category,
         notes=payload.notes,
         is_refund=payload.is_refund,
+        is_common=payload.is_common,
         debtor_id=payload.debtor_id,
     )
 
@@ -224,6 +225,92 @@ def find_existing_purchase_for_installment_import(
             if diff <= 0.01 or relative_diff <= 0.01:
                 return c
     return None
+
+
+
+def export_dashboard_to_excel(*, session: Session, year_month: str) -> bytes:
+    """Generates an Excel file with dashboard data for a given month."""
+    import pandas as pd
+    import io
+
+    # 1. Monthly Balance
+    balance = calculate_monthly_balance(session=session, year_month=year_month)
+    df_balance = pd.DataFrame([balance]) if balance else pd.DataFrame()
+
+    # 2. Transfers
+    transfers_data = calculate_transfers(session=session, year_month=year_month)
+    df_transfers = pd.DataFrame(transfers_data["transferencias"]) if transfers_data and "transferencias" in transfers_data else pd.DataFrame()
+    df_gastos = pd.DataFrame(transfers_data["gastos_por_persona"]) if transfers_data and "gastos_por_persona" in transfers_data else pd.DataFrame()
+
+    # 3. Purchase Details (Month Breakdown)
+    total_ars, items = report_month_breakdown(session=session, year_month=year_month)
+    breakdown_rows = []
+    for p, sch, amt, debtor_name in items:
+        breakdown_rows.append({
+            "Fecha": p.purchase_date,
+            "Descripción": p.description,
+            "Detalle": p.notes,
+            "Categoría": p.category,
+            "Cuota": f"{sch.installment_index}/{p.installments_total}",
+            "Monto (ARS)": amt,
+            "Deudor": debtor_name,
+            "Saldado": "Sí" if p.debt_settled else ("No" if p.debtor_id else "-")
+        })
+    df_breakdown = pd.DataFrame(breakdown_rows)
+
+    # 4. Debts
+    debts = report_debts(session=session)
+    df_debts = pd.DataFrame([
+        {
+            "Deudor": d_name,
+            "Pendiente": owed,
+            "Pagado": settled,
+            "Pendientes (#)": count
+        }
+        for _, d_name, owed, settled, count in debts
+    ])
+
+    # 5. Next Month Forecast
+    try:
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        dt = datetime.strptime(year_month, "%Y-%m")
+        next_month = (dt + relativedelta(months=1)).strftime("%Y-%m")
+        total_next, items_next = report_month_breakdown(session=session, year_month=next_month)
+        next_rows = []
+        for p, sch, amt, debtor_name in items_next:
+            next_rows.append({
+                "Fecha": p.purchase_date,
+                "Descripción": p.description,
+                "Cuota": f"{sch.installment_index}/{p.installments_total}",
+                "Monto (ARS)": amt,
+                "Deudor": debtor_name
+            })
+        df_next = pd.DataFrame(next_rows)
+        # Add a summary row for next month
+        if not df_next.empty:
+            summary_row = pd.DataFrame([{"Descripción": "TOTAL ESTIMADO", "Monto (ARS)": total_next}])
+            df_next = pd.concat([df_next, summary_row], ignore_index=True)
+    except Exception:
+        df_next = pd.DataFrame()
+
+    # Write to memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        if not df_balance.empty:
+            df_balance.to_excel(writer, sheet_name="Balance", index=False)
+        if not df_gastos.empty:
+            df_gastos.to_excel(writer, sheet_name="Gastos por Persona", index=False)
+        if not df_transfers.empty:
+            df_transfers.to_excel(writer, sheet_name="Transferencias", index=False)
+        if not df_breakdown.empty:
+            df_breakdown.to_excel(writer, sheet_name="Detalle del Mes", index=False)
+        if not df_next.empty:
+            df_next.to_excel(writer, sheet_name="Mes Siguiente", index=False)
+        if not df_debts.empty:
+            df_debts.to_excel(writer, sheet_name="Deudas de Terceros", index=False)
+
+    return output.getvalue()
 
 
 def list_purchases(
@@ -319,6 +406,18 @@ def update_purchase(*, session: Session, purchase_id: int, payload: PurchaseUpda
     session.commit()
     session.refresh(purchase)
     return purchase
+
+
+def bulk_update_purchases(*, session: Session, payload: schemas.BulkPurchaseUpdate) -> int:
+    """Updates multiple purchases in one transaction. Returns number of updated rows."""
+    count = 0
+    for pid in payload.purchase_ids:
+        try:
+            update_purchase(session=session, purchase_id=pid, payload=payload.update)
+            count += 1
+        except ValueError:
+            continue
+    return count
 
 
 def delete_purchase(*, session: Session, purchase_id: int) -> None:
@@ -872,70 +971,104 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             amount_ars_or_ars_original,
             Purchase.owner_person_id,
             Purchase.card_id,
+            Purchase.is_common,
             Card.owner_person_id,
         )
         .join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
-        .join(Card, Card.id == Purchase.card_id)
+        .outerjoin(Card, Card.id == Purchase.card_id)
         .where(InstallmentSchedule.year_month == year_month)
     ).all()
 
-    paid_amount_by_person_id: dict[int, float] = {inc["person_id"]: 0.0 for inc in ingresos}
+    from collections import defaultdict
+    paid_amount_by_person_id = defaultdict(float)
+    should_pay_by_person_id = defaultdict(float)
+    
+    # We need a name mapping for all people involved
+    # Start with those who have income
+    person_id_to_name = {inc["person_id"]: inc["person_name"] for inc in ingresos}
+    
+    # Also fetch names for anyone mentioned in purchases who might not have income
+    all_involved_pids = set()
+    for row in schedule_rows:
+        # row: (pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid)
+        owner_pid = row[2]
+        card_owner_pid = row[5]
+        if owner_pid is not None: all_involved_pids.add(owner_pid)
+        if card_owner_pid is not None: all_involved_pids.add(card_owner_pid)
+    
+    missing_pids = [pid for pid in all_involved_pids if pid not in person_id_to_name]
+    if missing_pids:
+        missing_people = session.exec(select(Person).where(Person.id.in_(missing_pids))).all()
+        for p in missing_people:
+            person_id_to_name[p.id] = p.name
 
-    purchase_ids = sorted({pid for pid, _, _, _, _ in schedule_rows})
+    purchase_ids = sorted({pid for pid, *rest in schedule_rows})
     payers_by_purchase_id: dict[int, list[PurchasePayer]] = {}
     if purchase_ids:
         payers = list(session.exec(select(PurchasePayer).where(PurchasePayer.purchase_id.in_(purchase_ids))))
         for payer in payers:
             payers_by_purchase_id.setdefault(payer.purchase_id, []).append(payer)
+            # Ensure name matches if missing
+            if payer.person_id not in person_id_to_name:
+                missing_p = session.exec(select(Person).where(Person.id == payer.person_id)).first()
+                if missing_p:
+                    person_id_to_name[missing_p.id] = missing_p.name
 
-    for purchase_id, amount_ars, owner_person_id, _card_id, card_owner_person_id in schedule_rows:
-        installment_amount = float(amount_ars or 0.0)
-        if installment_amount == 0.0:
-            continue
+    # Calculate what each person should pay.
+    # Shared expenses (is_common=True) are split 50/50 among all participants.
+    # Personal expenses (is_common=False) are 100% for the payer person.
+    num_total_people = session.exec(select(func.count(Person.id))).one()
+    all_people = session.exec(select(Person)).all()
+    
+    # Ensure all people are in the should_pay and paid_amount dictionaries
+    for p in all_people:
+        if p.id not in person_id_to_name:
+            person_id_to_name[p.id] = p.name
+        # Initialize dictionaries to ensure they appear in the result even with 0
+        should_pay_by_person_id[p.id] += 0.0
+        paid_amount_by_person_id[p.id] += 0.0
 
-        payer_person_id = owner_person_id if owner_person_id is not None else card_owner_person_id
-
-        payers = payers_by_purchase_id.get(purchase_id, [])
-        if not payers:
-            if payer_person_id is not None:
-                paid_amount_by_person_id.setdefault(payer_person_id, 0.0)
-                paid_amount_by_person_id[payer_person_id] += installment_amount
-            continue
-
-        fixed_payers = [p for p in payers if p.share_type == ShareType.FIXED]
-        percent_payers = [p for p in payers if p.share_type == ShareType.PERCENT]
-
-        fixed_total = sum(float(p.share_value) for p in fixed_payers)
-        remaining = max(installment_amount - fixed_total, 0.0)
-
-        for p in fixed_payers:
-            paid_amount_by_person_id.setdefault(p.person_id, 0.0)
-            paid_amount_by_person_id[p.person_id] += min(float(p.share_value), installment_amount)
-
-        if percent_payers:
-            percent_sum = sum(float(p.share_value) for p in percent_payers)
-            for p in percent_payers:
-                paid_amount_by_person_id.setdefault(p.person_id, 0.0)
-                paid_amount_by_person_id[p.person_id] += remaining * (float(p.share_value) / percent_sum)
+    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid in schedule_rows:
+        inst_amt = float(amount_ars or 0.0)
+        actual_payer_pid = owner_pid if owner_pid is not None else card_owner_pid
+        
+        if is_common:
+            # Shared: Split by all people (usually 2)
+            share = inst_amt / num_total_people if num_total_people > 0 else 0.0
+            for p_inc in all_people:
+                should_pay_by_person_id[p_inc.id] += share
         else:
-            # If only fixed payers exist and there's remaining, assign remaining to owner as fallback.
-            if remaining > 0 and payer_person_id is not None:
-                paid_amount_by_person_id.setdefault(payer_person_id, 0.0)
-                paid_amount_by_person_id[payer_person_id] += remaining
-
-    # Calculate what each person should pay (50/50 split)
-    should_pay_per_person = total_expenses / 2 if total_expenses > 0 else 0.0
-
-    person_name_by_id = {inc["person_id"]: inc["person_name"] for inc in ingresos}
+            # Personal: 100% to the actual payer
+            if actual_payer_pid is not None:
+                should_pay_by_person_id[actual_payer_pid] += inst_amt
+    
+    # Calculate who paid what
+    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid in schedule_rows:
+        inst_amt = float(amount_ars or 0.0)
+        
+        payers = payers_by_purchase_id.get(pid, [])
+        if payers:
+            for p in payers:
+                if p.share_type == ShareType.PERCENT:
+                    amt = inst_amt * (p.share_value / 100.0)
+                else:
+                    amt = p.share_value
+                paid_amount_by_person_id[p.person_id] += amt
+        else:
+            actual_payer_pid = owner_pid if owner_pid is not None else card_owner_pid
+            if actual_payer_pid is not None:
+                paid_amount_by_person_id[actual_payer_pid] += inst_amt
+    
     gastos_por_persona = []
-    for person_id in sorted(person_name_by_id.keys()):
-        paid_amount = float(paid_amount_by_person_id.get(person_id, 0.0))
-        difference = paid_amount - should_pay_per_person
+    for person_id in sorted(person_id_to_name.keys()):
+        paid_amount = float(paid_amount_by_person_id[person_id])
+        should_pay = float(should_pay_by_person_id[person_id])
+        difference = paid_amount - should_pay
         gastos_por_persona.append({
             "person_id": person_id,
-            "person_name": person_name_by_id[person_id],
+            "person_name": person_id_to_name[person_id],
             "paid_amount": round(paid_amount, 2),
-            "should_pay": round(should_pay_per_person, 2),
+            "should_pay": round(should_pay, 2),
             "difference": round(difference, 2),
         })
     

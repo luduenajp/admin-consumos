@@ -37,7 +37,7 @@ router = APIRouter()
 
 
 @router.post("/import/visa-xlsx")
-def import_visa_xlsx(card_id: int, provider: str, file: UploadFile = File(...)) -> dict:
+def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default=False), file: UploadFile = File(...)) -> dict:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
@@ -96,6 +96,7 @@ def import_visa_xlsx(card_id: int, provider: str, file: UploadFile = File(...)) 
                     category=None,
                     notes=None,
                     is_refund=False,
+                    is_common=is_common,
                     payers=None,
                 )
                 purchase = create_purchase(session=session, payload=payload)
@@ -149,6 +150,7 @@ def import_visa_pdf_endpoint(
     provider: str,
     file: UploadFile = File(...),
     password: str | None = Form(default=None),
+    is_common: bool = Form(default=False),
 ) -> dict:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
@@ -208,6 +210,7 @@ def import_visa_pdf_endpoint(
                     category=None,
                     notes=None,
                     is_refund=False,
+                    is_common=is_common,
                     payers=None,
                 )
                 purchase = create_purchase(session=session, payload=payload)
@@ -289,6 +292,7 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
                 category=None,
                 notes=None,
                 is_refund=False,
+                is_common=payload.is_common,
                 payers=None,
             )
             create_purchase(session=session, payload=purchase_payload)

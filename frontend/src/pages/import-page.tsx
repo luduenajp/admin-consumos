@@ -14,6 +14,7 @@ interface ImportFormState {
   format: ImportFormat
   pdfPassword: string
   gsheetsUrl: string
+  isCommon: boolean
 }
 
 export function ImportPage() {
@@ -23,6 +24,7 @@ export function ImportPage() {
     format: 'xlsx',
     pdfPassword: '',
     gsheetsUrl: '',
+    isCommon: true,
   })
 
   const cardsQuery = useQuery({
@@ -61,6 +63,7 @@ export function ImportPage() {
         return importGSheets({
           url: formState.gsheetsUrl,
           owner_person_id: formState.personId,
+          is_common: formState.isCommon,
         })
       }
 
@@ -75,6 +78,7 @@ export function ImportPage() {
           cardId: formState.cardId,
           file: formState.file,
           password: formState.pdfPassword || undefined,
+          is_common: formState.isCommon,
         })
       }
       if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) {
@@ -84,6 +88,7 @@ export function ImportPage() {
         provider: formState.provider,
         cardId: formState.cardId,
         file: formState.file,
+        is_common: formState.isCommon,
       })
     },
     onSuccess: () => {
@@ -94,43 +99,47 @@ export function ImportPage() {
 
   return (
     <section className="page">
-      <h2 className="pageTitle">Importar</h2>
-      <div className="panel">
-        <div className="formRow">
-          <label className="label">Proveedor</label>
-          <select
-            className="input"
-            onChange={(e) => setFormState((s) => ({ ...s, provider: e.target.value }))}
-            value={formState.provider}
-          >
-            <option value="santander">Santander</option>
-            <option value="nacion">Nación</option>
-            <option value="mercadopago">MercadoPago</option>
-          </select>
+      <h2 className="pageTitle">Importar Datos</h2>
+      <div className="panel" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+          <div className="formRow" style={{ marginBottom: 0 }}>
+            <label className="label">Proveedor</label>
+            <select
+              className="input"
+              onChange={(e) => setFormState((s) => ({ ...s, provider: e.target.value }))}
+              value={formState.provider}
+            >
+              <option value="santander">Santander</option>
+              <option value="nacion">Nación</option>
+              <option value="mercadopago">MercadoPago</option>
+            </select>
+          </div>
+
+          <div className="formRow" style={{ marginBottom: 0 }}>
+            <label className="label">Formato del Archivo</label>
+            <select
+              className="input"
+              onChange={(e) =>
+                setFormState((s) => ({
+                  ...s,
+                  format: e.target.value as ImportFormat,
+                  file: undefined,
+                }))
+              }
+              value={formState.format}
+            >
+              <option value="xlsx">Excel (XLSX)</option>
+              <option value="pdf">PDF (resumen)</option>
+              <option value="gsheets">Google Sheets / CSV link</option>
+            </select>
+          </div>
         </div>
 
-        <div className="formRow">
-          <label className="label">Formato</label>
-          <select
-            className="input"
-            onChange={(e) =>
-              setFormState((s) => ({
-                ...s,
-                format: e.target.value as ImportFormat,
-                file: undefined,
-              }))
-            }
-            value={formState.format}
-          >
-            <option value="xlsx">Excel (XLSX)</option>
-            <option value="pdf">PDF (resumen)</option>
-            <option value="gsheets">Google Sheets / CSV link</option>
-          </select>
-        </div>
+        <div style={{ borderTop: '1px solid var(--color-border)', margin: '32px 0' }} />
 
         {formState.format === 'gsheets' ? (
           <div className="formRow">
-            <label className="label">Responsable del gasto (Origen)</label>
+            <label className="label">Persona Responsable (Titular)</label>
             <select
               className="input"
               onChange={(e) =>
@@ -141,7 +150,7 @@ export function ImportPage() {
               }
               value={formState.personId ?? ''}
             >
-              <option value="">Seleccioná...</option>
+              <option value="">Seleccioná una persona...</option>
               {people.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -151,7 +160,7 @@ export function ImportPage() {
           </div>
         ) : (
           <div className="formRow">
-            <label className="label">Tarjeta</label>
+            <label className="label">Tarjeta Destino</label>
             <select
               className="input"
               onChange={(e) =>
@@ -162,18 +171,16 @@ export function ImportPage() {
               }
               value={formState.cardId ?? ''}
             >
-              <option value="">Seleccioná...</option>
+              <option value="">Seleccioná una tarjeta...</option>
               {cards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.provider})
                 </option>
               ))}
             </select>
-            {selectedCard ? <div className="hint">Dueño: person_id {selectedCard.owner_person_id}</div> : null}
+            {selectedCard ? <div className="hint" style={{ marginTop: '8px' }}>El gasto se registrará a nombre de: <strong>ID {selectedCard.owner_person_id}</strong></div> : null}
           </div>
         )}
-
-
 
         {formState.format === 'gsheets' ? (
           <div className="formRow">
@@ -185,28 +192,46 @@ export function ImportPage() {
               value={formState.gsheetsUrl}
               onChange={(e) => setFormState((s) => ({ ...s, gsheetsUrl: e.target.value }))}
             />
-            <div className="hint">Pegá el link de "Publicar en la web" en formato Valores separados por comas (.csv) o el link a un archivo CSV.</div>
+            <div className="hint">Recordá que el documento debe estar configurado como "Publicado en la Web" en formato CSV.</div>
           </div>
         ) : (
           <>
             <div className="formRow">
               <label className="label">
-                Archivo ({formState.format === 'pdf' ? 'PDF' : 'XLSX'})
+                Archivo {formState.format === 'pdf' ? 'PDF' : 'Excel'} seleccionado
               </label>
-              <input
-                className="input"
-                accept={formState.format === 'pdf' ? '.pdf' : '.xlsx,.xls'}
-                onChange={(e) => setFormState((s) => ({ ...s, file: e.target.files?.[0] }))}
-                type="file"
-              />
-              <div className="hint">
-                {formState.format === 'pdf'
-                  ? 'Resumen en PDF (Banco Nación Visa/Mastercard, MercadoPago). Contraseña abajo si aplica.'
-                  : 'Por ahora soporta el formato Visa XLSX como el ejemplo.'}
+              <div style={{
+                border: '2px dashed var(--color-border)',
+                padding: '32px',
+                borderRadius: 'var(--radius-md)',
+                textAlign: 'center',
+                backgroundColor: 'var(--color-primary-light)',
+                cursor: 'pointer',
+                position: 'relative'
+              }}>
+                <input
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, width: '100%', height: '100%',
+                    opacity: 0, cursor: 'pointer'
+                  }}
+                  accept={formState.format === 'pdf' ? '.pdf' : '.xlsx,.xls'}
+                  onChange={(e) => setFormState((s) => ({ ...s, file: e.target.files?.[0] }))}
+                  type="file"
+                />
+                <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>{formState.file ? '📄' : '📤'}</div>
+                <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>
+                  {formState.file ? formState.file.name : `Click o arrastrá tu archivo ${formState.format === 'pdf' ? 'PDF' : 'XLSX'}`}
+                </div>
+                <div className="hint" style={{ marginTop: '8px' }}>
+                  {formState.format === 'pdf'
+                    ? 'Resúmenes de Banco Nación o MercadoPago.'
+                    : 'Formato Visa XLSX exportado desde el Home Banking.'}
+                </div>
               </div>
               {formState.file && !fileExtensionValid ? (
-                <div className="error" style={{ marginTop: 6 }}>
-                  El archivo debe tener extensión {formState.format === 'pdf' ? '.pdf' : '.xlsx o .xls'}
+                <div className="error" style={{ marginTop: 12 }}>
+                  ⚠️ El archivo debe ser {formState.format === 'pdf' ? '.pdf' : '.xlsx o .xls'}
                 </div>
               ) : null}
             </div>
@@ -217,20 +242,42 @@ export function ImportPage() {
                 <input
                   className="input"
                   type="password"
-                  placeholder="Dejá vacío si el PDF no tiene contraseña"
+                  placeholder="Password del archivo..."
                   value={formState.pdfPassword}
                   onChange={(e) => setFormState((s) => ({ ...s, pdfPassword: e.target.value }))}
                   autoComplete="off"
                 />
-                <div className="hint">Solo necesaria si el resumen está protegido con contraseña.</div>
+                <div className="hint">Solo necesaria si el resumen está protegido.</div>
               </div>
             ) : null}
           </>
         )}
 
-        <div className="formRow">
+        <div className="formRow" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          marginTop: '32px',
+          padding: '16px',
+          background: 'var(--color-primary-light)',
+          borderRadius: 'var(--radius-md)'
+        }}>
+          <input
+            type="checkbox"
+            id="isCommon"
+            style={{ width: '20px', height: '20px' }}
+            checked={formState.isCommon}
+            onChange={(e) => setFormState((s) => ({ ...s, isCommon: e.target.checked }))}
+          />
+          <label htmlFor="isCommon" className="label" style={{ margin: 0, cursor: 'pointer', userSelect: 'none' }}>
+            Marcar compras importadas como <strong>gasto común</strong> (división 50/50)
+          </label>
+        </div>
+
+        <div style={{ marginTop: '32px' }}>
           <button
             className="button"
+            style={{ width: '100%', height: '54px', fontSize: '1.1rem', fontWeight: 700 }}
             disabled={
               importMutation.isPending ||
               (formState.format !== 'gsheets' && !!formState.file && !fileExtensionValid) ||
@@ -239,15 +286,33 @@ export function ImportPage() {
             onClick={() => importMutation.mutate()}
             type="button"
           >
-            {importMutation.isPending ? 'Importando...' : 'Importar'}
+            {importMutation.isPending ? 'Procesando archivo...' : 'Comenzar Importación'}
           </button>
         </div>
 
-        {importMutation.isError ? <div className="error">Error: {extractErrorMessage(importMutation.error)}</div> : null}
+        {importMutation.isError ? (
+          <div className="error" style={{ marginTop: '24px' }}>
+            <strong>Error:</strong> {extractErrorMessage(importMutation.error)}
+          </div>
+        ) : null}
+
         {importMutation.isSuccess ? (
-          <div className="success">
-            Importación OK. Creadas: {importMutation.data.created}, Salteadas: {importMutation.data.skipped},
-            Parseadas: {importMutation.data.parsed}
+          <div className="success" style={{ marginTop: '24px', padding: '24px' }}>
+            <div style={{ fontWeight: 800, fontSize: '1.2rem', marginBottom: '8px' }}>✅ Importación Exitosa</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', textAlign: 'center' }}>
+              <div>
+                <div className="label">Creadas</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{importMutation.data.created}</div>
+              </div>
+              <div>
+                <div className="label">Salteadas</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-text-secondary)' }}>{importMutation.data.skipped}</div>
+              </div>
+              <div>
+                <div className="label">Total Parseadas</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)' }}>{importMutation.data.parsed}</div>
+              </div>
+            </div>
           </div>
         ) : null}
       </div>

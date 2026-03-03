@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Response
 from sqlmodel import select
 
 from app.crud import (
+    bulk_update_purchases,
     calculate_monthly_balance,
     calculate_transfers,
     create_card,
@@ -16,6 +17,7 @@ from app.crud import (
     create_monthly_budget,
     create_person,
     create_purchase,
+    export_dashboard_to_excel,
     get_distinct_categories,
     get_monthly_budget,
     list_cards,
@@ -37,6 +39,7 @@ from app.crud import (
 from app.db import get_session
 from app.models import Person, PurchasePayer
 from app.schemas import (
+    BulkPurchaseUpdate,
     CardCreate,
     CardRead,
     CategoryRead,
@@ -185,6 +188,7 @@ def get_purchases(
                     category=p.category,
                     notes=p.notes,
                     is_refund=p.is_refund,
+                    is_common=p.is_common,
                     debtor_id=p.debtor_id,
                     debt_settled=p.debt_settled,
                     payers=payers_by_purchase_id.get(int(p.id), []),
@@ -226,6 +230,7 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
             category=purchase.category,
             notes=purchase.notes,
             is_refund=purchase.is_refund,
+            is_common=purchase.is_common,
             debtor_id=purchase.debtor_id,
             debt_settled=purchase.debt_settled,
         )
@@ -267,9 +272,17 @@ def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
             category=purchase.category,
             notes=purchase.notes,
             is_refund=purchase.is_refund,
+            is_common=purchase.is_common,
             debtor_id=purchase.debtor_id,
             debt_settled=purchase.debt_settled,
         )
+
+
+@router.post("/purchases/bulk")
+def post_bulk_update_purchases(payload: BulkPurchaseUpdate) -> dict:
+    with get_session() as session:
+        updated_count = bulk_update_purchases(session=session, payload=payload)
+        return {"updated": updated_count}
 
 
 @router.get("/reports/month-breakdown", response_model=MonthBreakdownResponse)
@@ -300,6 +313,7 @@ def get_report_month_breakdown(
                 debtor_id=p.debtor_id,
                 debtor_name=debtor_name,
                 debt_settled=p.debt_settled,
+                is_common=p.is_common,
             )
             for p, sch, amt, debtor_name in items
             if p.id is not None
@@ -487,6 +501,16 @@ def post_income(payload: IncomeCreate) -> IncomeRead:
             year_month=income.year_month,
             amount=float(income.amount),
             notes=income.notes
+        )
+@router.get("/reports/export-excel")
+def get_export_excel(year_month: str) -> Response:
+    with get_session() as session:
+        content = export_dashboard_to_excel(session=session, year_month=year_month)
+        filename = f"reporte_{year_month}.xlsx"
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
 

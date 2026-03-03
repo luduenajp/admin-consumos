@@ -65,6 +65,7 @@ class PurchaseCreate(BaseModel):
     notes: Optional[str] = None
 
     is_refund: bool = False
+    is_common: bool = False
     debtor_id: Optional[int] = None
 
     payers: Optional[list[PurchasePayerCreate]] = None
@@ -110,6 +111,7 @@ class PurchaseRead(BaseModel):
     category: Optional[str]
     notes: Optional[str]
     is_refund: bool
+    is_common: bool
     debtor_id: Optional[int]
     debt_settled: bool
     payers: list[PurchasePayerRead] = Field(default_factory=list)
@@ -144,6 +146,7 @@ class MonthBreakdownRow(BaseModel):
     debtor_id: Optional[int] = None
     debtor_name: Optional[str] = None
     debt_settled: bool = False
+    is_common: bool = False
 
 
 class MonthBreakdownResponse(BaseModel):
@@ -155,6 +158,7 @@ class MonthBreakdownResponse(BaseModel):
 class GSheetsImportRequest(BaseModel):
     url: str
     owner_person_id: int
+    is_common: bool = False
 
 
 class CategorySpendingRow(BaseModel):
@@ -165,6 +169,7 @@ class CategorySpendingRow(BaseModel):
 class PurchaseUpdate(BaseModel):
     notes: Optional[str] = None
     category: Optional[str] = None
+    is_common: Optional[bool] = None
     debtor_id: Optional[int] = None
     debt_settled: Optional[bool] = None
 
@@ -243,3 +248,7 @@ class TransferCalculationResponse(BaseModel):
     total_ingresos: float
     gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
     transferencias: list[dict]  # [{from_person, to_person, amount}]
+
+class BulkPurchaseUpdate(BaseModel):
+    purchase_ids: list[int]
+    update: PurchaseUpdate

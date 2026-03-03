@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import {
   fetchPeople,
   fetchMonthBreakdown,
-  fetchMonthlyReport,
   fetchTimeline,
   fetchDebtReport,
+  updatePurchase,
 } from '../api/endpoints'
-import { extractErrorMessage } from '../api/http'
 import { Spinner } from '../components/Spinner'
 import { TimelineChart } from '../components/TimelineChart'
 import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
@@ -37,16 +36,13 @@ export function DashboardPage() {
   const personId = personFilter ? Number(personFilter) : undefined
   const monthOptions = useMemo(() => buildMonthOptions(), [])
 
+  const queryClient = useQueryClient()
   const { data: peopleData } = useQuery({
     queryKey: ['people'],
     queryFn: fetchPeople,
   })
   const people = peopleData ?? []
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['reports', 'monthly', { personId }],
-    queryFn: () => fetchMonthlyReport({ personId }),
-  })
 
   const { data: timelineData, isLoading: timelineLoading } = useQuery({
     queryKey: ['reports', 'timeline', { personId }],
@@ -63,28 +59,28 @@ export function DashboardPage() {
     queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId }),
   })
 
-  if (isLoading)
-    return (
-      <div className="loadingContainer">
-        <Spinner size={32} />
-      </div>
-    )
-  if (error) return <div className="error">Error: {extractErrorMessage(error)}</div>
+  const commonMutation = useMutation({
+    mutationFn: ({ id, is_common }: { id: number; is_common: boolean }) => updatePurchase(id, { is_common }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+      queryClient.invalidateQueries({ queryKey: ['transfer-calculation'] })
+      queryClient.invalidateQueries({ queryKey: ['monthly-balance'] })
+    },
+  })
 
-  const rows = data ?? []
 
   return (
     <section className="page">
       <h2 className="pageTitle">Dashboard</h2>
 
-      {/* Filters */}
-      <div className="panel" style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'end' }}>
-          <div className="formRow">
+      {/* Filters Container */}
+      <div className="panel" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Mes a ver</label>
             <select
               className="input"
-              style={{ maxWidth: '180px' }}
+              style={{ width: '180px' }}
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
             >
@@ -94,14 +90,14 @@ export function DashboardPage() {
                 </option>
               ))}
             </select>
-            <div className="hint">Cuotas que vencen en este mes</div>
+            <div className="hint">Cuotas que vencen este mes</div>
           </div>
           {people.length > 0 && (
-            <div className="formRow">
+            <div className="formRow" style={{ marginBottom: 0 }}>
               <label className="label">Ver gastos de</label>
               <select
                 className="input"
-                style={{ maxWidth: '200px' }}
+                style={{ width: '200px' }}
                 value={personFilter}
                 onChange={(e) => setPersonFilter(e.target.value)}
               >
@@ -113,18 +109,29 @@ export function DashboardPage() {
                 ))}
               </select>
               <div className="hint">
-                {personFilter ? `Solo lo que pagó ${people.find((x) => String(x.id) === personFilter)?.name}` : 'Totales de todos'}
+                {personFilter ? `Pagado por ${people.find((x) => String(x.id) === personFilter)?.name}` : 'Totales combinados'}
               </div>
             </div>
           )}
+          <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+            <button
+              onClick={() => {
+                window.location.href = `/api/reports/export-excel?year_month=${monthFilter}`
+              }}
+              className="button"
+              style={{ background: '#27ae60', color: 'white', borderColor: '#2ecc71', fontWeight: 600 }}
+            >
+              📊 Exportar Excel
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Monthly Balance Card */}
-      <MonthlyBalanceCard yearMonth={monthFilter} />
-
-      {/* Transfer Calculation Card */}
-      <TransferCalculationCard yearMonth={monthFilter} />
+      {/* Top Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+        <MonthlyBalanceCard yearMonth={monthFilter} />
+        <TransferCalculationCard yearMonth={monthFilter} />
+      </div>
 
       {/* Resumen del mes seleccionado */}
       <div className="panel">
@@ -170,6 +177,7 @@ export function DashboardPage() {
                       <th>Detalle</th>
                       <th>Deudor</th>
                       <th>Cuota</th>
+                      <th style={{ textAlign: 'center' }}>Común</th>
                       <th style={{ textAlign: 'right' }}>Monto (ARS)</th>
                     </tr>
                   </thead>
@@ -190,6 +198,15 @@ export function DashboardPage() {
                         </td>
                         <td>
                           {row.installment_index}/{row.installments_total}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            className="checkbox"
+                            checked={row.is_common}
+                            onChange={(e) => commonMutation.mutate({ id: row.purchase_id, is_common: e.target.checked })}
+                            disabled={commonMutation.isPending}
+                          />
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 500 }}>
                           ${row.amount_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -253,30 +270,6 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Monthly Report Panel */}
-      <div className="panel">
-        <div className="panelTitle">Totales mensuales (ARS)</div>
-        {rows.length === 0 ? (
-          <div className="muted">Sin datos</div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Mes</th>
-                <th>Total (ARS)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.year_month}>
-                  <td>{r.year_month}</td>
-                  <td>{r.total_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
     </section>
   )
 }
