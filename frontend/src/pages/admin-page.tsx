@@ -60,30 +60,30 @@ function PeopleSection() {
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 12 }}>
-        <div className="formRow">
-          <label className="label">Nombre</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nombre de la persona"
-          />
-        </div>
-        <div className="formRow">
+      <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
+          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="label">Nuevo Nombre</label>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: Pablo"
+            />
+          </div>
           <button
             className="button"
+            style={{ height: '42px' }}
             disabled={createMutation.isPending || !name.trim()}
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending ? 'Creando...' : 'Agregar persona'}
+            {createMutation.isPending ? 'Creando...' : 'Agregar'}
           </button>
         </div>
         {createMutation.isError ? (
-          <div className="error">Error: {extractErrorMessage(createMutation.error)}</div>
+          <div className="error" style={{ marginTop: '12px' }}>{extractErrorMessage(createMutation.error)}</div>
         ) : null}
-        {createMutation.isSuccess ? <div className="success">Persona creada</div> : null}
       </div>
     </div>
   )
@@ -146,71 +146,67 @@ function CardsSection() {
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 12 }}>
-        <div className="formRow">
-          <label className="label">Nombre de la tarjeta</label>
-          <input
-            className="input"
-            value={form.name}
-            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-            placeholder="Ej: Visa Santander"
-          />
+      <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="formRow">
+            <label className="label">Nombre</label>
+            <input
+              className="input"
+              value={form.name}
+              onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+              placeholder="Ej: Visa Santander"
+            />
+          </div>
+          <div className="formRow">
+            <label className="label">Proveedor</label>
+            <select
+              className="input"
+              value={form.provider}
+              onChange={(e) => setForm((s) => ({ ...s, provider: e.target.value }))}
+            >
+              <option value="visa">Visa</option>
+              <option value="mastercard">Mastercard</option>
+              <option value="amex">Amex</option>
+            </select>
+          </div>
         </div>
-        <div className="formRow">
-          <label className="label">Proveedor</label>
-          <select
-            className="input"
-            value={form.provider}
-            onChange={(e) => setForm((s) => ({ ...s, provider: e.target.value }))}
-          >
-            <option value="visa">Visa</option>
-            <option value="mastercard">Mastercard</option>
-            <option value="amex">Amex</option>
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="formRow">
+            <label className="label">Titular</label>
+            <select
+              className="input"
+              value={form.ownerPersonId}
+              onChange={(e) => setForm((s) => ({ ...s, ownerPersonId: e.target.value }))}
+            >
+              <option value="">Seleccioná...</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="formRow">
+            <label className="label">Últimos 4 (opcional)</label>
+            <input
+              className="input"
+              value={form.last4}
+              onChange={(e) => setForm((s) => ({ ...s, last4: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+              placeholder="1234"
+              maxLength={4}
+            />
+          </div>
         </div>
-        <div className="formRow">
-          <label className="label">Persona dueña</label>
-          <select
-            className="input"
-            value={form.ownerPersonId}
-            onChange={(e) => setForm((s) => ({ ...s, ownerPersonId: e.target.value }))}
-          >
-            <option value="">Seleccioná...</option>
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="formRow">
-          <label className="label">Últimos 4 dígitos (opcional)</label>
-          <input
-            className="input"
-            value={form.last4}
-            onChange={(e) =>
-              setForm((s) => ({ ...s, last4: e.target.value.replace(/\D/g, '').slice(0, 4) }))
-            }
-            placeholder="1234"
-            maxLength={4}
-            pattern="[0-9]*"
-            inputMode="numeric"
-          />
-        </div>
-        <div className="formRow">
-          <button
-            className="button"
-            disabled={createMutation.isPending || !form.name.trim() || !form.ownerPersonId}
-            onClick={() => createMutation.mutate()}
-            type="button"
-          >
-            {createMutation.isPending ? 'Creando...' : 'Agregar tarjeta'}
-          </button>
-        </div>
+        <button
+          className="button"
+          style={{ width: '100%', marginTop: '8px' }}
+          disabled={createMutation.isPending || !form.name.trim() || !form.ownerPersonId}
+          onClick={() => createMutation.mutate()}
+          type="button"
+        >
+          {createMutation.isPending ? 'Creando...' : 'Agregar Nueva Tarjeta'}
+        </button>
         {createMutation.isError ? (
-          <div className="error">Error: {extractErrorMessage(createMutation.error)}</div>
+          <div className="error" style={{ marginTop: '12px' }}>{extractErrorMessage(createMutation.error)}</div>
         ) : null}
-        {createMutation.isSuccess ? <div className="success">Tarjeta creada</div> : null}
       </div>
     </div>
   )
@@ -267,64 +263,57 @@ function FxRatesSection() {
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 12 }}>
-        <div className="formRow">
-          <label className="label">Mes (YYYY-MM)</label>
-          <input
-            className="input"
-            type="month"
-            value={form.yearMonth}
-            onChange={(e) => setForm((s) => ({ ...s, yearMonth: e.target.value }))}
-          />
-        </div>
-        <div className="formRow">
-          <label className="label">Moneda</label>
-          <select
-            className="input"
-            value={form.currency}
-            onChange={(e) => setForm((s) => ({ ...s, currency: e.target.value as CurrencyCode }))}
-          >
-            <option value="USD">USD</option>
-            <option value="ARS">ARS</option>
-          </select>
+      <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="formRow">
+            <label className="label">Mes (YYYY-MM)</label>
+            <input
+              className="input"
+              type="month"
+              value={form.yearMonth}
+              onChange={(e) => setForm((s) => ({ ...s, yearMonth: e.target.value }))}
+            />
+          </div>
+          <div className="formRow">
+            <label className="label">Moneda</label>
+            <select
+              className="input"
+              value={form.currency}
+              onChange={(e) => setForm((s) => ({ ...s, currency: e.target.value as CurrencyCode }))}
+            >
+              <option value="USD">USD</option>
+              <option value="ARS">ARS</option>
+            </select>
+          </div>
         </div>
         <div className="formRow">
           <label className="label">Cotización en ARS</label>
-          <input
-            className="input"
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={form.rate}
-            onChange={(e) => setForm((s) => ({ ...s, rate: e.target.value }))}
-            placeholder="1150.50"
-          />
-          {form.rate && (Number(form.rate) <= 0 || Number.isNaN(Number(form.rate))) ? (
-            <div className="hint" style={{ color: 'var(--color-error-text)' }}>
-              La cotización debe ser mayor a 0
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={form.rate}
+                onChange={(e) => setForm((s) => ({ ...s, rate: e.target.value }))}
+                placeholder="Ej: 1150.50"
+              />
+              {form.rate && (Number(form.rate) <= 0 || Number.isNaN(Number(form.rate))) && (
+                <div className="hint" style={{ color: 'var(--color-error-text)', marginTop: '4px' }}>Debe ser mayor a 0</div>
+              )}
             </div>
-          ) : null}
+            <button
+              className="button"
+              style={{ height: '42px', minWidth: '100px' }}
+              disabled={upsertMutation.isPending || !form.yearMonth || !form.rate || Number(form.rate) <= 0}
+              onClick={() => upsertMutation.mutate()}
+              type="button"
+            >
+              {upsertMutation.isPending ? '...' : 'Guardar'}
+            </button>
+          </div>
         </div>
-        <div className="formRow">
-          <button
-            className="button"
-            disabled={
-              upsertMutation.isPending ||
-              !form.yearMonth ||
-              !form.rate ||
-              Number(form.rate) <= 0 ||
-              Number.isNaN(Number(form.rate))
-            }
-            onClick={() => upsertMutation.mutate()}
-            type="button"
-          >
-            {upsertMutation.isPending ? 'Guardando...' : 'Guardar tipo de cambio'}
-          </button>
-        </div>
-        {upsertMutation.isError ? (
-          <div className="error">Error: {extractErrorMessage(upsertMutation.error)}</div>
-        ) : null}
-        {upsertMutation.isSuccess ? <div className="success">Tipo de cambio guardado</div> : null}
       </div>
     </div>
   )
@@ -376,30 +365,27 @@ function DebtorsSection() {
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 12 }}>
-        <div className="formRow">
-          <label className="label">Nombre</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nombre del deudor"
-          />
-        </div>
-        <div className="formRow">
+      <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
+          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="label">Nombre del Deudor</label>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: Marcelo"
+            />
+          </div>
           <button
             className="button"
+            style={{ height: '42px' }}
             disabled={createMutation.isPending || !name.trim()}
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending ? 'Creando...' : 'Agregar deudor'}
+            {createMutation.isPending ? '...' : 'Agregar'}
           </button>
         </div>
-        {createMutation.isError ? (
-          <div className="error">Error: {extractErrorMessage(createMutation.error)}</div>
-        ) : null}
-        {createMutation.isSuccess ? <div className="success">Deudor creado</div> : null}
       </div>
     </div>
   )
@@ -412,11 +398,14 @@ function DebtorsSection() {
 export function AdminPage() {
   return (
     <section className="page">
-      <h2 className="pageTitle">Administración</h2>
-      <PeopleSection />
-      <CardsSection />
-      <DebtorsSection />
-      <FxRatesSection />
+      <h2 className="pageTitle">Administración del Sistema</h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px' }}>
+        <PeopleSection />
+        <CardsSection />
+        <DebtorsSection />
+        <FxRatesSection />
+      </div>
     </section>
   )
 }

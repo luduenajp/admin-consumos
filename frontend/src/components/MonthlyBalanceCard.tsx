@@ -41,7 +41,7 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
     return (
       <div className="panel">
         <h2 className="panelTitle">Balance del Mes</h2>
-        <div style={{ padding: '1rem', textAlign: 'center' }}>
+        <div className="loadingContainer">
           <Spinner />
         </div>
       </div>
@@ -52,10 +52,10 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
     return (
       <div className="panel">
         <h2 className="panelTitle">Balance del Mes</h2>
-        <div className="error" style={{ margin: '1rem' }}>
+        <div className="error">
           {extractErrorMessage(error)}
         </div>
-        <p className="muted" style={{ margin: '1rem' }}>
+        <p className="hint" style={{ marginTop: '16px' }}>
           Configurá un presupuesto para ver el balance mensual
         </p>
       </div>
@@ -66,7 +66,7 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
     return (
       <div className="panel">
         <h2 className="panelTitle">Balance del Mes</h2>
-        <p className="muted" style={{ margin: '1rem' }}>
+        <p className="muted">
           No hay presupuesto configurado para este mes
         </p>
       </div>
@@ -78,65 +78,64 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
   return (
     <div className="panel">
       <h2 className="panelTitle">Balance del Mes</h2>
-      
-      <div style={{ padding: '1rem 0' }}>
+
+      <div style={{ paddingTop: '8px' }}>
         {/* Barra de progreso */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: '0.5rem'
+        <div style={{ marginBottom: '32px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginBottom: '12px'
           }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>
-              {balance.porcentaje_gastado.toFixed(1)}% del presupuesto gastado
+            <span style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--color-text)' }}>
+              {balance.porcentaje_gastado.toFixed(1)}% <span style={{ fontWeight: 400, fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>del presupuesto</span>
             </span>
-            <span style={{ 
-              fontSize: '0.8rem', 
+            <span style={{
+              fontSize: '0.85rem',
               color: status.color,
-              fontWeight: '500'
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: '0.02em'
             }}>
               {status.text}
             </span>
           </div>
-          
+
           <div style={{
             width: '100%',
-            height: '8px',
-            backgroundColor: '#e5e7eb',
-            borderRadius: '4px',
+            height: '10px',
+            backgroundColor: 'var(--color-primary-light)',
+            borderRadius: '10px',
             overflow: 'hidden'
           }}>
             <div style={{
               width: `${Math.min(balance.porcentaje_gastado, 100)}%`,
               height: '100%',
-              backgroundColor: status.color,
-              transition: 'width 0.3s ease'
+              background: `linear-gradient(90deg, ${status.color}, ${status.color}dd)`,
+              borderRadius: '10px',
+              transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
             }} />
           </div>
         </div>
 
         {/* Métricas principales */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
-          gap: '1rem',
-          marginBottom: '1.5rem'
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '24px',
+          marginBottom: '32px'
         }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-              Presupuesto
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: '600' }}>
+          <div>
+            <div className="label" style={{ marginBottom: '4px' }}>Presupuesto</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-text)' }}>
               {formatCurrency(balance.presupuesto)}
             </div>
           </div>
-          
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-              Gastos
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: '600' }}>
+
+          <div>
+            <div className="label" style={{ marginBottom: '4px' }}>Gastos Acumulados</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-primary)' }}>
               {formatCurrency(balance.gastos_acumulados)}
             </div>
           </div>
@@ -144,33 +143,36 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
 
         {/* Sobrante personal */}
         <div style={{
-          padding: '1rem',
-          backgroundColor: balance.sobrante_total >= 0 ? '#f0fdf4' : '#fef2f2',
-          borderRadius: '8px',
-          border: `1px solid ${balance.sobrante_total >= 0 ? '#bbf7d0' : '#fecaca'}`
+          padding: '24px',
+          background: balance.sobrante_total >= 0
+            ? 'linear-gradient(135deg, var(--color-success-bg), #ffffff)'
+            : 'linear-gradient(135deg, var(--color-error-bg), #ffffff)',
+          borderRadius: 'var(--radius-md)',
+          border: `1px solid ${balance.sobrante_total >= 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+          textAlign: 'center'
         }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ 
-              fontSize: '0.9rem', 
-              marginBottom: '0.5rem',
-              fontWeight: '500'
-            }}>
-              💰 Sobrante para cada uno
-            </div>
-            <div style={{ 
-              fontSize: '1.5rem', 
-              fontWeight: '700',
-              color: balance.sobrante_total >= 0 ? '#166534' : '#991b1b'
-            }}>
-              {formatCurrency(balance.sobrante_por_persona)}
-            </div>
-            <div style={{ 
-              fontSize: '0.8rem', 
-              color: '#6b7280',
-              marginTop: '0.25rem'
-            }}>
-              Total restante: {formatCurrency(balance.sobrante_total)}
-            </div>
+          <div style={{
+            fontSize: '1rem',
+            marginBottom: '8px',
+            fontWeight: '600',
+            color: 'var(--color-text-secondary)'
+          }}>
+            💰 Sobrante para cada uno
+          </div>
+          <div style={{
+            fontSize: '2rem',
+            fontWeight: '800',
+            color: balance.sobrante_total >= 0 ? 'var(--color-success)' : 'var(--color-error)',
+            letterSpacing: '-0.02em'
+          }}>
+            {formatCurrency(balance.sobrante_por_persona)}
+          </div>
+          <div style={{
+            fontSize: '0.9rem',
+            color: 'var(--color-text-secondary)',
+            marginTop: '8px'
+          }}>
+            Total restante: <strong>{formatCurrency(balance.sobrante_total)}</strong>
           </div>
         </div>
       </div>

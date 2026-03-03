@@ -5,7 +5,7 @@ import { AdminPage } from './pages/admin-page'
 import { DashboardPage } from './pages/dashboard-page'
 import { ImportPage } from './pages/import-page'
 import { PurchasesPage } from './pages/purchases-page'
-import BudgetPage from './pages/budget-page'
+import { BudgetPage } from './pages/budget-page'
 
 function App() {
   return (

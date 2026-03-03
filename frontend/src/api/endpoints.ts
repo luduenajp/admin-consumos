@@ -129,6 +129,10 @@ export function updatePurchase(id: number, payload: PurchaseUpdate): Promise<Pur
   return patchJson<Purchase>(`/api/purchases/${id}`, payload)
 }
 
+export function bulkUpdatePurchases(payload: { purchase_ids: number[]; update: PurchaseUpdate }): Promise<{ updated: number }> {
+  return postJson<{ updated: number }>('/api/purchases/bulk', payload)
+}
+
 export function deletePurchase(id: number): Promise<void> {
   return deleteHttp(`/api/purchases/${id}`)
 }
@@ -153,12 +157,12 @@ export function upsertFxRate(payload: { year_month: string; currency: 'USD' | 'A
   return postJson<FxRate>('/api/fx', payload)
 }
 
-export function importVisaXlsx(payload: { provider: string; cardId: number; file: File }): Promise<ImportResult> {
+export function importVisaXlsx(payload: { provider: string; cardId: number; file: File; is_common?: boolean }): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('file', payload.file)
   const url = `/api/import/visa-xlsx?provider=${encodeURIComponent(payload.provider)}&card_id=${encodeURIComponent(
     String(payload.cardId),
-  )}`
+  )}&is_common=${payload.is_common ? 'true' : 'false'}`
   return postForm<ImportResult>(url, formData)
 }
 
@@ -167,6 +171,7 @@ export function importVisaPdf(payload: {
   cardId: number
   file: File
   password?: string
+  is_common?: boolean
 }): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('file', payload.file)
@@ -175,7 +180,7 @@ export function importVisaPdf(payload: {
   }
   const url = `/api/import/visa-pdf?provider=${encodeURIComponent(payload.provider)}&card_id=${encodeURIComponent(
     String(payload.cardId),
-  )}`
+  )}&is_common=${payload.is_common ? 'true' : 'false'}`
   return postForm<ImportResult>(url, formData)
 }
 

@@ -44,6 +44,7 @@ export interface Purchase {
   category?: string | null
   notes?: string | null
   is_refund: boolean
+  is_common: boolean
   debtor_id?: number | null
   debt_settled: boolean
   payers: PurchasePayer[]
@@ -74,6 +75,7 @@ export interface MonthBreakdownRow {
   debtor_id?: number | null
   debtor_name?: string | null
   debt_settled: boolean
+  is_common: boolean
 }
 
 export interface MonthBreakdownResponse {
@@ -119,6 +121,7 @@ export interface PurchaseCreate {
   category?: string | null
   notes?: string | null
   is_refund?: boolean
+  is_common?: boolean
   debtor_id?: number | null
   payers?: {
     person_id: number
@@ -144,6 +147,7 @@ export interface CategorySpendingRow {
 export interface PurchaseUpdate {
   notes?: string | null
   category?: string | null
+  is_common?: boolean
   debtor_id?: number | null
   debt_settled?: boolean
 }
@@ -233,4 +237,5 @@ export interface TransferCalculationResponse {
 export interface GSheetsImportRequest {
   url: string
   owner_person_id: number
+  is_common: boolean
 }
