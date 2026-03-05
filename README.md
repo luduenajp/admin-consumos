@@ -9,8 +9,8 @@ Admin Consumos es una aplicación web de uso local diseñada para gestionar gast
   - Visa XLSX.
   - PDFs de resúmenes (Banco Nación Visa/Mastercard, MercadoPago).
   - Detección automática de cuotas ("x de y") y fechas de cierre.
-- **División de Gastos**: Permite repartir un mismo consumo entre varias personas, ya sea por porcentaje o montos fijos.
-- **Reportes Mensuales**: Visualización del desglose de gastos por mes, categorías y personas.
+- **División de Gastos y Fondo Común**: El sistema implementa una lógica de pozo compartido donde los ingresos se promedian para cubrir gastos comunes, asegurando que a ambos participantes les quede el mismo dinero disponible al final del mes.
+- **Reportes Mensuales**: Visualización del desglose de gastos por mes, categorías y personas, incluyendo el cálculo exacto de transferencias necesarias para equilibrar el pozo común.
 - **Conversión de Moneda**: Soporte para consumos en USD con carga manual de cotizaciones mensuales para reportes precisos en ARS.
 - **Deduplicación**: Sistema basado en huellas digitales (SHA256) para evitar importar el mismo consumo dos veces.
 

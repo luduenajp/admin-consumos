@@ -1,7 +1,9 @@
 import { deleteHttp, getJson, patchJson, postForm, postJson } from './http'
 import type {
   Card,
-  CategoryRead,
+  Category,
+  CategoryCreate,
+  CategoryUpdate,
   CategorySpendingRow,
   Debtor,
   DebtorCreate,
@@ -23,6 +25,8 @@ import type {
   PurchaseUpdate,
   TimelineRow,
   TransferCalculationResponse,
+  DebtTransfer,
+  DebtTransferCreate,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -110,17 +114,39 @@ export function fetchTimeline(params?: {
   return getJson<TimelineRow[]>(`/api/reports/timeline${suffix}`)
 }
 
-export function fetchCategories(): Promise<CategoryRead> {
-  return getJson<CategoryRead>('/api/categories')
+export function fetchCategories(): Promise<Category[]> {
+  return getJson<Category[]>('/api/categories')
+}
+
+export function fetchDistinctCategories(): Promise<string[]> {
+  return getJson<string[]>('/api/categories/distinct')
+}
+
+export function createCategory(payload: CategoryCreate): Promise<Category> {
+  return postJson<Category>('/api/categories', payload)
+}
+
+export function updateCategory(id: number, payload: CategoryUpdate): Promise<Category> {
+  return patchJson<Category>(`/api/categories/${id}`, payload)
+}
+
+export function deleteCategory(id: number): Promise<void> {
+  return deleteHttp(`/api/categories/${id}`)
+}
+
+export function autoCategorizePurchases(): Promise<{ updated: number }> {
+  return postJson<{ updated: number }>('/api/purchases/auto-categorize', {})
 }
 
 export function fetchCategorySpending(params?: {
   cardId?: number
   personId?: number
+  yearMonth?: string
 }): Promise<CategorySpendingRow[]> {
   const qs = new URLSearchParams()
   if (params?.cardId) qs.set('card_id', String(params.cardId))
   if (params?.personId) qs.set('person_id', String(params.personId))
+  if (params?.yearMonth) qs.set('year_month', params.yearMonth)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return getJson<CategorySpendingRow[]>(`/api/reports/category-spending${suffix}`)
 }
@@ -211,4 +237,17 @@ export function fetchTransferCalculation(yearMonth: string): Promise<TransferCal
 
 export function importGSheets(payload: GSheetsImportRequest): Promise<ImportResult> {
   return postJson<ImportResult>('/api/import/gsheets', payload)
+}
+
+export function fetchDebtTransfers(yearMonth?: string): Promise<DebtTransfer[]> {
+  const url = yearMonth ? `/api/debt-transfers?year_month=${yearMonth}` : '/api/debt-transfers'
+  return getJson<DebtTransfer[]>(url)
+}
+
+export function createDebtTransfer(payload: DebtTransferCreate): Promise<DebtTransfer> {
+  return postJson<DebtTransfer>('/api/debt-transfers', payload)
+}
+
+export function deleteDebtTransfer(id: number): Promise<void> {
+  return deleteHttp(`/api/debt-transfers/${id}`)
 }

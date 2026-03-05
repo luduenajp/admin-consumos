@@ -35,6 +35,8 @@ def _migrate_add_columns() -> None:
             conn.execute(text("ALTER TABLE purchase ADD COLUMN debtor_id INTEGER REFERENCES debtor(id)"))
         if "debt_settled" not in columns:
             conn.execute(text("ALTER TABLE purchase ADD COLUMN debt_settled BOOLEAN DEFAULT 0 NOT NULL"))
+        if "beneficiary_person_id" not in columns:
+            conn.execute(text("ALTER TABLE purchase ADD COLUMN beneficiary_person_id INTEGER REFERENCES person(id)"))
         conn.commit()
 
 

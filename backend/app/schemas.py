@@ -67,6 +67,7 @@ class PurchaseCreate(BaseModel):
     is_refund: bool = False
     is_common: bool = False
     debtor_id: Optional[int] = None
+    beneficiary_person_id: Optional[int] = None
 
     payers: Optional[list[PurchasePayerCreate]] = None
 
@@ -113,6 +114,7 @@ class PurchaseRead(BaseModel):
     is_refund: bool
     is_common: bool
     debtor_id: Optional[int]
+    beneficiary_person_id: Optional[int]
     debt_settled: bool
     payers: list[PurchasePayerRead] = Field(default_factory=list)
 
@@ -127,8 +129,20 @@ class TimelineRow(BaseModel):
     total_ars: float
 
 
+class CategoryCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
 class CategoryRead(BaseModel):
-    categories: list[str]
+    id: int
+    name: str
+    color: Optional[str] = None
 
 
 class MonthBreakdownRow(BaseModel):
@@ -145,6 +159,7 @@ class MonthBreakdownRow(BaseModel):
     currency: str
     debtor_id: Optional[int] = None
     debtor_name: Optional[str] = None
+    beneficiary_person_id: Optional[int] = None
     debt_settled: bool = False
     is_common: bool = False
 
@@ -171,6 +186,7 @@ class PurchaseUpdate(BaseModel):
     category: Optional[str] = None
     is_common: Optional[bool] = None
     debtor_id: Optional[int] = None
+    beneficiary_person_id: Optional[int] = None
     debt_settled: Optional[bool] = None
 
 
@@ -242,12 +258,34 @@ class IncomeRead(BaseModel):
     notes: Optional[str]
 
 
+class DebtTransferCreate(BaseModel):
+    from_person_id: int
+    to_person_id: int
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    amount: float = Field(gt=0)
+    transfer_date: date = Field(default_factory=date.today)
+    notes: Optional[str] = None
+
+
+class DebtTransferRead(BaseModel):
+    id: int
+    from_person_id: int
+    from_person_name: str
+    to_person_id: int
+    to_person_name: str
+    year_month: str
+    amount: float
+    transfer_date: date
+    notes: Optional[str]
+
+
 class TransferCalculationResponse(BaseModel):
     year_month: str
     ingresos: list[dict]  # [{person_id, person_name, amount}]
     total_ingresos: float
     gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
     transferencias: list[dict]  # [{from_person, to_person, amount}]
+    transferencias_internas: list[DebtTransferRead] = Field(default_factory=list)
 
 class BulkPurchaseUpdate(BaseModel):
     purchase_ids: list[int]

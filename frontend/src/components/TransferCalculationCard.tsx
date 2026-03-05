@@ -111,8 +111,13 @@ export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
                     <span title="Total que esta persona pagó de su bolsillo este mes">Pagó: {formatCurrency(gasto.paid_amount)}</span>
                     <span style={{ margin: '0 8px' }}>|</span>
-                    <span title="Monto que realmente le corresponde pagar (Propios + 50% de Comunes)">Le corresponde: {formatCurrency(gasto.should_pay)}</span>
+                    <span title="Monto que debería haber aportado para igualar el dinero sobrante (Gastos Propios + Aporte al fondo común)">Le correspondía: {formatCurrency(gasto.should_pay)}</span>
                   </div>
+                  {gasto.adjustment !== 0 && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-success)', marginTop: '2px', fontStyle: 'italic' }}>
+                      {gasto.adjustment > 0 ? '+' : ''}{formatCurrency(gasto.adjustment)} por pagos directos
+                    </div>
+                  )}
                 </div>
                 <div
                   title={gasto.difference > 0 ? "Saldo a favor: Pagó más de lo que le correspondía" : gasto.difference < 0 ? "Saldo en contra: Pagó menos de lo que le correspondía" : "Balanceado"}
