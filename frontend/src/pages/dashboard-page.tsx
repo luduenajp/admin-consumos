@@ -7,9 +7,12 @@ import {
   fetchTimeline,
   fetchDebtReport,
   updatePurchase,
+  fetchCategories,
+  fetchCategorySpending,
 } from '../api/endpoints'
 import { Spinner } from '../components/Spinner'
 import { TimelineChart } from '../components/TimelineChart'
+import { CategoryChart } from '../components/CategoryChart'
 import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
 import { TransferCalculationCard } from '../components/TransferCalculationCard'
 
@@ -57,6 +60,16 @@ export function DashboardPage() {
   const { data: monthBreakdownData, isLoading: monthBreakdownLoading } = useQuery({
     queryKey: ['reports', 'month-breakdown', { yearMonth: monthFilter, personId }],
     queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId }),
+  })
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  })
+
+  const { data: categorySpendingData, isLoading: categorySpendingLoading } = useQuery({
+    queryKey: ['reports', 'category-spending', { personId, yearMonth: monthFilter }],
+    queryFn: () => fetchCategorySpending({ personId, yearMonth: monthFilter }),
   })
 
   const commonMutation = useMutation({
@@ -218,6 +231,18 @@ export function DashboardPage() {
               </div>
             )}
           </>
+        )}
+      </div>
+
+      {/* Category Chart Panel */}
+      <div className="panel">
+        <div className="panelTitle">Gasto por Categoría ({monthOptions.find((m) => m.value === monthFilter)?.label ?? monthFilter})</div>
+        {categorySpendingLoading ? (
+          <div className="loadingContainer">
+            <Spinner size={28} />
+          </div>
+        ) : (
+          <CategoryChart data={categorySpendingData ?? []} categories={categoriesData ?? []} />
         )}
       </div>
 

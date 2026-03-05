@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Response
 from sqlmodel import select
 
 from app.crud import (
+    auto_categorize_purchases,
     bulk_update_purchases,
     calculate_monthly_balance,
     calculate_transfers,
@@ -16,7 +17,13 @@ from app.crud import (
     create_income,
     create_monthly_budget,
     create_person,
-    create_purchase,
+    create_category,
+    delete_category,
+    update_category,
+    list_categories,
+    create_debt_transfer,
+    delete_debt_transfer,
+    list_debt_transfers,
     export_dashboard_to_excel,
     get_distinct_categories,
     get_monthly_budget,
@@ -37,12 +44,14 @@ from app.crud import (
     upsert_fx_rate,
 )
 from app.db import get_session
-from app.models import Person, PurchasePayer
+from app.models import Category, Person, PurchasePayer
 from app.schemas import (
     BulkPurchaseUpdate,
     CardCreate,
     CardRead,
+    CategoryCreate,
     CategoryRead,
+    CategoryUpdate,
     CategorySpendingRow,
     DebtorCreate,
     DebtorRead,
@@ -65,6 +74,8 @@ from app.schemas import (
     MonthlyBalanceResponse,
     IncomeCreate,
     IncomeRead,
+    DebtTransferCreate,
+    DebtTransferRead,
     TransferCalculationResponse,
 )
 
@@ -190,6 +201,7 @@ def get_purchases(
                     is_refund=p.is_refund,
                     is_common=p.is_common,
                     debtor_id=p.debtor_id,
+                    beneficiary_person_id=p.beneficiary_person_id,
                     debt_settled=p.debt_settled,
                     payers=payers_by_purchase_id.get(int(p.id), []),
                 )
@@ -232,6 +244,7 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
             is_refund=purchase.is_refund,
             is_common=purchase.is_common,
             debtor_id=purchase.debtor_id,
+            beneficiary_person_id=purchase.beneficiary_person_id,
             debt_settled=purchase.debt_settled,
         )
 
@@ -274,6 +287,7 @@ def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
             is_refund=purchase.is_refund,
             is_common=purchase.is_common,
             debtor_id=purchase.debtor_id,
+            beneficiary_person_id=purchase.beneficiary_person_id,
             debt_settled=purchase.debt_settled,
         )
 
@@ -283,6 +297,13 @@ def post_bulk_update_purchases(payload: BulkPurchaseUpdate) -> dict:
     with get_session() as session:
         updated_count = bulk_update_purchases(session=session, payload=payload)
         return {"updated": updated_count}
+
+
+@router.post("/purchases/auto-categorize")
+def post_auto_categorize_purchases() -> dict:
+    with get_session() as session:
+        count = auto_categorize_purchases(session=session)
+        return {"updated": count}
 
 
 @router.get("/reports/month-breakdown", response_model=MonthBreakdownResponse)
@@ -312,6 +333,7 @@ def get_report_month_breakdown(
                 currency=str(p.currency),
                 debtor_id=p.debtor_id,
                 debtor_name=debtor_name,
+                beneficiary_person_id=p.beneficiary_person_id,
                 debt_settled=p.debt_settled,
                 is_common=p.is_common,
             )
@@ -340,21 +362,66 @@ def get_report_timeline(
         return [TimelineRow(year_month=ym, total_ars=total) for ym, total in rows]
 
 
-@router.get("/categories", response_model=CategoryRead)
-def get_categories() -> CategoryRead:
-    """Return list of distinct categories."""
+@router.get("/categories", response_model=list[CategoryRead])
+def get_categories() -> list[CategoryRead]:
+    """Return all defined categories."""
     with get_session() as session:
-        categories = get_distinct_categories(session=session)
-        return CategoryRead(categories=categories)
+        categories = list_categories(session=session)
+        return [
+            CategoryRead(id=c.id, name=c.name, color=c.color)
+            for c in categories
+            if c.id is not None
+        ]
+
+
+@router.post("/categories", response_model=CategoryRead)
+def post_category(payload: CategoryCreate) -> CategoryRead:
+    with get_session() as session:
+        try:
+            category = create_category(session=session, payload=payload)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return CategoryRead(id=category.id, name=category.name, color=category.color)
+
+
+@router.patch("/categories/{category_id}", response_model=CategoryRead)
+def patch_category(category_id: int, payload: CategoryUpdate) -> CategoryRead:
+    with get_session() as session:
+        try:
+            category = update_category(session=session, category_id=category_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return CategoryRead(id=category.id, name=category.name, color=category.color)
+
+
+@router.delete("/categories/{category_id}")
+def delete_category_endpoint(category_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_category(session=session, category_id=category_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return Response(status_code=204)
+
+
+@router.get("/categories/distinct", response_model=list[str])
+def get_distinct_categories_endpoint() -> list[str]:
+    """Return list of distinct categories currently used in purchases."""
+    with get_session() as session:
+        return get_distinct_categories(session=session)
 
 
 @router.get("/reports/category-spending", response_model=list[CategorySpendingRow])
 def get_category_spending(
-    card_id: Optional[int] = None, person_id: Optional[int] = None
+    card_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    year_month: Optional[str] = None,
 ) -> list[CategorySpendingRow]:
     """Return spending totals by category."""
     with get_session() as session:
-        rows = report_spending_by_category(session=session, card_id=card_id, person_id=person_id)
+        rows = report_spending_by_category(
+            session=session, card_id=card_id, person_id=person_id, year_month=year_month
+        )
         return [CategorySpendingRow(category=cat, total_ars=total) for cat, total in rows]
 
 
@@ -521,3 +588,59 @@ def get_transfer_calculation(year_month: str) -> TransferCalculationResponse:
         if transfers is None:
             raise HTTPException(status_code=404, detail="No incomes found for this month")
         return TransferCalculationResponse(**transfers)
+
+
+@router.get("/debt-transfers", response_model=list[DebtTransferRead])
+def get_debt_transfers(year_month: Optional[str] = None) -> list[DebtTransferRead]:
+    with get_session() as session:
+        transfers = list_debt_transfers(session=session, year_month=year_month)
+        out = []
+        for t in transfers:
+            from_p = session.get(Person, t.from_person_id)
+            to_p = session.get(Person, t.to_person_id)
+            out.append(
+                DebtTransferRead(
+                    id=t.id,
+                    from_person_id=t.from_person_id,
+                    from_person_name=from_p.name if from_p else "Desconocido",
+                    to_person_id=t.to_person_id,
+                    to_person_name=to_p.name if to_p else "Desconocido",
+                    year_month=t.year_month,
+                    amount=float(t.amount),
+                    transfer_date=t.transfer_date,
+                    notes=t.notes
+                )
+            )
+        return out
+
+
+@router.post("/debt-transfers", response_model=DebtTransferRead)
+def post_debt_transfer(payload: DebtTransferCreate) -> DebtTransferRead:
+    with get_session() as session:
+        from_p = session.get(Person, payload.from_person_id)
+        to_p = session.get(Person, payload.to_person_id)
+        if not from_p or not to_p:
+            raise HTTPException(status_code=404, detail="Person not found")
+
+        transfer = create_debt_transfer(session=session, payload=payload)
+        return DebtTransferRead(
+            id=transfer.id,
+            from_person_id=transfer.from_person_id,
+            from_person_name=from_p.name,
+            to_person_id=transfer.to_person_id,
+            to_person_name=to_p.name,
+            year_month=transfer.year_month,
+            amount=float(transfer.amount),
+            transfer_date=transfer.transfer_date,
+            notes=transfer.notes
+        )
+
+
+@router.delete("/debt-transfers/{transfer_id}")
+def delete_debt_transfer_endpoint(transfer_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_debt_transfer(session=session, transfer_id=transfer_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return Response(status_code=204)

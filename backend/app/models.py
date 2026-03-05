@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import StrEnum
+from enum import Enum
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
 
-class CurrencyCode(StrEnum):
+class CurrencyCode(str, Enum):
     ARS = "ARS"
     USD = "USD"
 
 
-class ShareType(StrEnum):
+class ShareType(str, Enum):
     PERCENT = "percent"
     FIXED = "fixed"
 
 
-class PaymentMethod(StrEnum):
+class PaymentMethod(str, Enum):
     CARD = "card"
     TRANSFER = "transfer"
     CASH = "cash"
@@ -39,6 +39,12 @@ class Card(SQLModel, table=True):
 class Debtor(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
+
+
+class Category(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+    color: Optional[str] = None
 
 
 class FxRate(SQLModel, table=True):
@@ -65,6 +71,7 @@ class Purchase(SQLModel, table=True):
     first_installment_month: Optional[str] = None  # YYYY-MM
 
     owner_person_id: Optional[int] = Field(default=None, foreign_key="person.id")
+    beneficiary_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
     category: Optional[str] = Field(default=None, index=True)
     notes: Optional[str] = None
 
@@ -108,9 +115,20 @@ class MonthlyBudget(SQLModel, table=True):
     notes: Optional[str] = None
 
 
+
 class Income(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     person_id: int = Field(foreign_key="person.id", index=True)
     year_month: str = Field(index=True)  # YYYY-MM
     amount: float
+    notes: Optional[str] = None
+
+
+class DebtTransfer(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    from_person_id: int = Field(foreign_key="person.id", index=True)
+    to_person_id: int = Field(foreign_key="person.id", index=True)
+    year_month: str = Field(index=True)  # YYYY-MM
+    amount: float
+    transfer_date: date = Field(default_factory=date.today)
     notes: Optional[str] = None

@@ -1,9 +1,20 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { fetchCards, fetchPeople, fetchPurchases, fetchDebtors, updatePurchase, deletePurchase, createPurchase, bulkUpdatePurchases } from '../api/endpoints'
+import {
+  fetchCards,
+  fetchPeople,
+  fetchPurchases,
+  fetchDebtors,
+  updatePurchase,
+  deletePurchase,
+  createPurchase,
+  bulkUpdatePurchases,
+  fetchCategories,
+  autoCategorizePurchases
+} from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode, PaymentMethod, PurchaseCreate, PurchaseUpdate } from '../api/types'
+import type { CurrencyCode, PaymentMethod, PurchaseCreate, PurchaseUpdate, Category } from '../api/types'
 import { Spinner } from '../components/Spinner'
 
 function EditableCell({
@@ -69,6 +80,7 @@ export function PurchasesPage() {
   const [descriptionSearch, setDescriptionSearch] = useState<string>('')
   const [debtorFilter, setDebtorFilter] = useState<string>('')
   const [personFilter, setPersonFilter] = useState<string>('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [page, setPage] = useState(1)
 
   const queryClient = useQueryClient()
@@ -81,6 +93,7 @@ export function PurchasesPage() {
     maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
     descriptionSearch: descriptionSearch || undefined,
     personId: personFilter ? Number(personFilter) : undefined,
+    category: categoryFilter || undefined,
     page,
     pageSize: PAGE_SIZE,
   }
@@ -89,6 +102,22 @@ export function PurchasesPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['purchases', filters],
     queryFn: () => fetchPurchases(filters),
+  })
+
+  const { data: categoriesData } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  })
+
+  const autoCategorizeMutation = useMutation({
+    mutationFn: autoCategorizePurchases,
+    onSuccess: (res) => {
+      alert(`Se actualizaron ${res.updated} compras automáticamente.`)
+      queryClient.invalidateQueries({ queryKey: ['purchases'] })
+    },
+    onError: (err) => {
+      alert(`Error al auto-categorizar: ${extractErrorMessage(err)}`)
+    },
   })
 
   const { data: debtorsData } = useQuery({
@@ -157,8 +186,10 @@ export function PurchasesPage() {
     currency: 'ARS' as CurrencyCode,
     owner_person_id: '',
     debtor_id: '',
+    beneficiary_person_id: '',
     notes: '',
     is_common: false,
+    category: '',
   })
 
   const createMutation = useMutation({
@@ -175,8 +206,10 @@ export function PurchasesPage() {
         currency: 'ARS' as CurrencyCode,
         owner_person_id: '',
         debtor_id: '',
+        beneficiary_person_id: '',
         notes: '',
         is_common: false,
+        category: '',
       })
     },
     onError: (err) => {
@@ -196,6 +229,7 @@ export function PurchasesPage() {
       amount_original: parseFloat(newPurchase.amount_original),
       owner_person_id: Number(newPurchase.owner_person_id),
       debtor_id: newPurchase.debtor_id ? Number(newPurchase.debtor_id) : null,
+      beneficiary_person_id: (!newPurchase.is_common && newPurchase.beneficiary_person_id) ? Number(newPurchase.beneficiary_person_id) : null,
       installments_total: 1,
     })
   }
@@ -208,6 +242,7 @@ export function PurchasesPage() {
     setDescriptionSearch('')
     setDebtorFilter('')
     setPersonFilter('')
+    setCategoryFilter('')
     setPage(1)
   }
 
@@ -240,9 +275,14 @@ export function PurchasesPage() {
         <h2 className="pageTitle" style={{ margin: 0 }}>
           Compras
         </h2>
-        <button type="button" className="button" onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? '✕ Cancelar' : '+ Nueva compra manual'}
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button type="button" className="button ghost" onClick={() => autoCategorizeMutation.mutate()} disabled={autoCategorizeMutation.isPending}>
+            {autoCategorizeMutation.isPending ? 'Procesando...' : '🪄 Auto-categorizar'}
+          </button>
+          <button type="button" className="button" onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? '✕ Cancelar' : '+ Nueva compra manual'}
+          </button>
+        </div>
       </div>
 
       {showAddForm && (
@@ -310,6 +350,23 @@ export function PurchasesPage() {
                   ))}
                 </select>
               </div>
+              {!newPurchase.is_common && (
+                <div className="formRow">
+                  <label className="label">Beneficiario (Opcional)</label>
+                  <select
+                    className="input"
+                    value={newPurchase.beneficiary_person_id}
+                    onChange={(e) => setNewPurchase({ ...newPurchase, beneficiary_person_id: e.target.value })}
+                  >
+                    <option value="">(Quien pagó)</option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="formRow">
                 <label className="label">Medio de pago</label>
                 <select
@@ -332,6 +389,21 @@ export function PurchasesPage() {
                   {debtors.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="formRow">
+                <label className="label">Categoría</label>
+                <select
+                  className="input"
+                  value={newPurchase.category}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, category: e.target.value })}
+                >
+                  <option value="">Sin categoría</option>
+                  {categoriesData?.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
@@ -390,15 +462,14 @@ export function PurchasesPage() {
             </select>
           </div>
           <div className="formRow" style={{ marginBottom: 0 }}>
-            <label className="label">Descripción</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="Buscar..."
-              style={{ width: '200px' }}
-              value={descriptionSearch}
-              onChange={(e) => { setDescriptionSearch(e.target.value); setPage(1); }}
-            />
+            <label className="label">Categoría</label>
+            <select className="input" style={{ width: '160px' }} value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+              <option value="">Todas</option>
+              <option value="null">Sin categoría</option>
+              {categoriesData?.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -467,11 +538,13 @@ export function PurchasesPage() {
                         </div>
                       </th>
                       <th>Descripción</th>
+                      <th>Categoría</th>
                       <th>Pagó</th>
                       <th>Detalle</th>
                       <th>Moneda</th>
                       <th>Monto</th>
                       <th>Cuotas</th>
+                      <th>Beneficiario</th>
                       <th>Deudor</th>
                       <th>Saldado</th>
                       <th></th>
@@ -502,6 +575,23 @@ export function PurchasesPage() {
                           />
                         </td>
                         <td>{p.description}</td>
+                        <td>
+                          <select
+                            className="input"
+                            style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                            value={p.category ?? ''}
+                            onChange={(e) => {
+                              patchMutation.mutate({ id: p.id, payload: { category: e.target.value || null } })
+                            }}
+                          >
+                            <option value="">-</option>
+                            {categoriesData?.map((cat) => (
+                              <option key={cat.id} value={cat.name}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
                         <td>{formatPayers(p.payers)}</td>
                         <td>
                           <EditableCell
@@ -521,6 +611,31 @@ export function PurchasesPage() {
                           })}
                         </td>
                         <td>{p.installments_total}</td>
+                        <td>
+                          {!p.is_common ? (
+                            <select
+                              className="input"
+                              style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                              value={p.beneficiary_person_id ?? ''}
+                              onChange={(e) => {
+                                const newBenId = e.target.value ? Number(e.target.value) : null
+                                patchMutation.mutate({
+                                  id: p.id,
+                                  payload: { beneficiary_person_id: newBenId },
+                                })
+                              }}
+                            >
+                              <option value="">(Pagador)</option>
+                              {people.map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="muted">-</span>
+                          )}
+                        </td>
                         <td>
                           <select
                             className="input"

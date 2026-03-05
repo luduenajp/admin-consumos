@@ -46,6 +46,7 @@ export interface Purchase {
   is_refund: boolean
   is_common: boolean
   debtor_id?: number | null
+  beneficiary_person_id?: number | null
   debt_settled: boolean
   payers: PurchasePayer[]
 }
@@ -74,6 +75,7 @@ export interface MonthBreakdownRow {
   currency: string
   debtor_id?: number | null
   debtor_name?: string | null
+  beneficiary_person_id?: number | null
   debt_settled: boolean
   is_common: boolean
 }
@@ -123,6 +125,7 @@ export interface PurchaseCreate {
   is_refund?: boolean
   is_common?: boolean
   debtor_id?: number | null
+  beneficiary_person_id?: number | null
   payers?: {
     person_id: number
     share_type: 'percent' | 'fixed'
@@ -135,8 +138,20 @@ export interface TimelineRow {
   total_ars: number
 }
 
-export interface CategoryRead {
-  categories: string[]
+export interface Category {
+  id: number
+  name: string
+  color?: string | null
+}
+
+export interface CategoryCreate {
+  name: string
+  color?: string | null
+}
+
+export interface CategoryUpdate {
+  name?: string | null
+  color?: string | null
 }
 
 export interface CategorySpendingRow {
@@ -149,6 +164,7 @@ export interface PurchaseUpdate {
   category?: string | null
   is_common?: boolean
   debtor_id?: number | null
+  beneficiary_person_id?: number | null
   debt_settled?: boolean
 }
 
@@ -229,9 +245,32 @@ export interface TransferCalculationResponse {
     person_name: string
     paid_amount: number
     should_pay: number
+    adjustment: number
     difference: number
   }>
   transferencias: Array<{ from_person: string, to_person: string, amount: number }>
+  transferencias_internas: DebtTransfer[]
+}
+
+export interface DebtTransfer {
+  id: number
+  from_person_id: number
+  from_person_name: string
+  to_person_id: number
+  to_person_name: string
+  year_month: string
+  amount: number
+  transfer_date: string
+  notes?: string | null
+}
+
+export interface DebtTransferCreate {
+  from_person_id: number
+  to_person_id: number
+  year_month: string
+  amount: number
+  transfer_date?: string
+  notes?: string | null
 }
 
 export interface GSheetsImportRequest {

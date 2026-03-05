@@ -3,11 +3,14 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import case
+from sqlalchemy import case, text
+from sqlalchemy.orm import aliased
 from sqlmodel import Session, col, func, select
 
+from app import schemas
 from app.models import (
     Card,
+    Category,
     CurrencyCode,
     Debtor,
     FxRate,
@@ -18,8 +21,20 @@ from app.models import (
     Purchase,
     PurchasePayer,
     ShareType,
+    DebtTransfer,
 )
-from app.schemas import CardCreate, DebtorCreate, FxRateUpsert, IncomeCreate, MonthlyBudgetCreate, PersonCreate, PurchaseCreate, PurchaseUpdate
+from app.schemas import (
+    CardCreate, 
+    CategoryCreate, 
+    CategoryUpdate, 
+    DebtorCreate, 
+    FxRateUpsert, 
+    IncomeCreate, 
+    MonthlyBudgetCreate, 
+    PersonCreate, 
+    PurchaseCreate, 
+    PurchaseUpdate
+)
 from app.utils_dates import add_months, to_year_month
 from app.importers.visa_xlsx import normalize_purchase_description
 
@@ -151,6 +166,7 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
         is_refund=payload.is_refund,
         is_common=payload.is_common,
         debtor_id=payload.debtor_id,
+        beneficiary_person_id=payload.beneficiary_person_id,
     )
 
     session.add(purchase)
@@ -608,7 +624,11 @@ def get_distinct_categories(*, session: Session) -> list[str]:
 
 
 def report_spending_by_category(
-    *, session: Session, card_id: Optional[int] = None, person_id: Optional[int] = None
+    *,
+    session: Session,
+    card_id: Optional[int] = None,
+    person_id: Optional[int] = None,
+    year_month: Optional[str] = None,
 ) -> list[tuple[str, float]]:
     """
     Return total spending per category (category -> total_ars).
@@ -624,6 +644,8 @@ def report_spending_by_category(
     # Apply filters
     if card_id is not None:
         stmt = stmt.where(Purchase.card_id == card_id)
+    if year_month is not None:
+        stmt = stmt.where(InstallmentSchedule.year_month == year_month)
 
     results = list(session.exec(stmt))
 
@@ -973,6 +995,7 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             Purchase.card_id,
             Purchase.is_common,
             Card.owner_person_id,
+            Purchase.beneficiary_person_id,
         )
         .join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
         .outerjoin(Card, Card.id == Purchase.card_id)
@@ -990,11 +1013,13 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
     # Also fetch names for anyone mentioned in purchases who might not have income
     all_involved_pids = set()
     for row in schedule_rows:
-        # row: (pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid)
+        # row: (pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid, beneficiary_pid)
         owner_pid = row[2]
         card_owner_pid = row[5]
+        beneficiary_pid = row[6]
         if owner_pid is not None: all_involved_pids.add(owner_pid)
         if card_owner_pid is not None: all_involved_pids.add(card_owner_pid)
+        if beneficiary_pid is not None: all_involved_pids.add(beneficiary_pid)
     
     missing_pids = [pid for pid in all_involved_pids if pid not in person_id_to_name]
     if missing_pids:
@@ -1014,36 +1039,47 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
                 if missing_p:
                     person_id_to_name[missing_p.id] = missing_p.name
 
-    # Calculate what each person should pay.
-    # Shared expenses (is_common=True) are split 50/50 among all participants.
-    # Personal expenses (is_common=False) are 100% for the payer person.
-    num_total_people = session.exec(select(func.count(Person.id))).one()
-    all_people = session.exec(select(Person)).all()
-    
-    # Ensure all people are in the should_pay and paid_amount dictionaries
-    for p in all_people:
-        if p.id not in person_id_to_name:
-            person_id_to_name[p.id] = p.name
-        # Initialize dictionaries to ensure they appear in the result even with 0
-        should_pay_by_person_id[p.id] += 0.0
-        paid_amount_by_person_id[p.id] += 0.0
+    income_by_person_id = {inc["person_id"]: inc["amount"] for inc in ingresos}
 
-    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid in schedule_rows:
+    # Calculate what each person should pay using the Common Pool logic:
+    # 1. Target Base Take Home = (Total Income - Total Common Expenses) / num_people
+    # 2. Target Cash = Target Base Take Home - Personal Expenses
+    # 3. Should Pay = Income - Target Cash
+    
+    total_common_expenses = 0.0
+    personal_expenses_by_person_id = defaultdict(float)
+
+    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid, beneficiary_pid in schedule_rows:
         inst_amt = float(amount_ars or 0.0)
         actual_payer_pid = owner_pid if owner_pid is not None else card_owner_pid
         
         if is_common:
-            # Shared: Split by all people (usually 2)
-            share = inst_amt / num_total_people if num_total_people > 0 else 0.0
-            for p_inc in all_people:
-                should_pay_by_person_id[p_inc.id] += share
+            total_common_expenses += inst_amt
         else:
-            # Personal: 100% to the actual payer
-            if actual_payer_pid is not None:
-                should_pay_by_person_id[actual_payer_pid] += inst_amt
+            expense_owner_pid = beneficiary_pid if beneficiary_pid is not None else actual_payer_pid
+            if expense_owner_pid is not None:
+                personal_expenses_by_person_id[expense_owner_pid] += inst_amt
+
+    num_total_people = session.exec(select(func.count(Person.id))).one()
+    all_people = session.exec(select(Person)).all()
+    
+    # Ensure all people are in the dictionaries
+    for p in all_people:
+        if p.id not in person_id_to_name:
+            person_id_to_name[p.id] = p.name
+        should_pay_by_person_id[p.id] = 0.0
+        paid_amount_by_person_id[p.id] = 0.0
+
+    target_base_take_home = (total_ingresos - total_common_expenses) / num_total_people if num_total_people > 0 else 0.0
+
+    for p in all_people:
+        income = income_by_person_id.get(p.id, 0.0)
+        personal_expense = personal_expenses_by_person_id.get(p.id, 0.0)
+        target_cash = target_base_take_home - personal_expense
+        should_pay_by_person_id[p.id] = income - target_cash
     
     # Calculate who paid what
-    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid in schedule_rows:
+    for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid, beneficiary_pid in schedule_rows:
         inst_amt = float(amount_ars or 0.0)
         
         payers = payers_by_purchase_id.get(pid, [])
@@ -1059,16 +1095,56 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             if actual_payer_pid is not None:
                 paid_amount_by_person_id[actual_payer_pid] += inst_amt
     
+    # Get internal debt transfers for the month
+    PersonFrom = aliased(Person)
+    PersonTo = aliased(Person)
+    
+    internal_transfers = list(session.exec(
+        select(DebtTransfer, PersonFrom.name.label("from_name"), PersonTo.name.label("to_name"))
+        .join(PersonFrom, PersonFrom.id == DebtTransfer.from_person_id)
+        .join(PersonTo, PersonTo.id == DebtTransfer.to_person_id)
+        .where(DebtTransfer.year_month == year_month)
+    ).all())
+    
+    # Map internal transfers to persons
+    internal_sent = defaultdict(float)
+    internal_received = defaultdict(float)
+    transferencias_internas_rows = []
+    
+    for dt, from_name, to_name in internal_transfers:
+        internal_sent[dt.from_person_id] += float(dt.amount)
+        internal_received[dt.to_person_id] += float(dt.amount)
+        transferencias_internas_rows.append(
+            schemas.DebtTransferRead(
+                id=dt.id,
+                from_person_id=dt.from_person_id,
+                from_person_name=from_name,
+                to_person_id=dt.to_person_id,
+                to_person_name=to_name,
+                year_month=dt.year_month,
+                amount=float(dt.amount),
+                transfer_date=dt.transfer_date,
+                notes=dt.notes
+            )
+        )
+
     gastos_por_persona = []
     for person_id in sorted(person_id_to_name.keys()):
         paid_amount = float(paid_amount_by_person_id[person_id])
         should_pay = float(should_pay_by_person_id[person_id])
-        difference = paid_amount - should_pay
+        
+        # Adjust difference with internal transfers
+        # (paid - should_pay) + sent - received
+        initial_diff = paid_amount - should_pay
+        adjustment = internal_sent[person_id] - internal_received[person_id]
+        difference = initial_diff + adjustment
+        
         gastos_por_persona.append({
             "person_id": person_id,
             "person_name": person_id_to_name[person_id],
             "paid_amount": round(paid_amount, 2),
             "should_pay": round(should_pay, 2),
+            "adjustment": round(adjustment, 2),
             "difference": round(difference, 2),
         })
     
@@ -1103,5 +1179,145 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
         "ingresos": ingresos,
         "total_ingresos": total_ingresos,
         "gastos_por_persona": gastos_por_persona,
-        "transferencias": transferencias
+        "transferencias": transferencias,
+        "transferencias_internas": transferencias_internas_rows
     }
+
+
+def create_debt_transfer(*, session: Session, payload: schemas.DebtTransferCreate) -> DebtTransfer:
+    transfer = DebtTransfer(
+        from_person_id=payload.from_person_id,
+        to_person_id=payload.to_person_id,
+        year_month=payload.year_month,
+        amount=payload.amount,
+        transfer_date=payload.transfer_date,
+        notes=payload.notes
+    )
+    session.add(transfer)
+    session.commit()
+    session.refresh(transfer)
+    return transfer
+
+
+def list_debt_transfers(*, session: Session, year_month: Optional[str] = None) -> list[DebtTransfer]:
+    query = select(DebtTransfer).order_by(DebtTransfer.transfer_date.desc())
+    if year_month:
+        query = query.where(DebtTransfer.year_month == year_month)
+    return list(session.exec(query))
+
+
+def delete_debt_transfer(*, session: Session, transfer_id: int) -> None:
+    transfer = session.get(DebtTransfer, transfer_id)
+    if transfer is None:
+        raise ValueError(f"DebtTransfer {transfer_id} not found")
+    session.delete(transfer)
+    session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+def create_category(*, session: Session, payload: CategoryCreate) -> Category:
+    category = Category(name=payload.name, color=payload.color)
+    session.add(category)
+    session.commit()
+    session.refresh(category)
+    return category
+
+
+def list_categories(*, session: Session) -> list[Category]:
+    return list(session.exec(select(Category).order_by(Category.name)))
+
+
+def update_category(*, session: Session, category_id: int, payload: CategoryUpdate) -> Category:
+    category = session.get(Category, category_id)
+    if category is None:
+        raise ValueError(f"Category {category_id} not found")
+
+    old_name = category.name
+    new_data = payload.model_dump(exclude_unset=True)
+    
+    for field, value in new_data.items():
+        setattr(category, field, value)
+    
+    # If name changed, update all purchases with the old name
+    if "name" in new_data and new_data["name"] != old_name:
+        stmt = select(Purchase).where(Purchase.category == old_name)
+        purchases = session.exec(stmt).all()
+        for p in purchases:
+            p.category = new_data["name"]
+            session.add(p)
+            
+    session.add(category)
+    session.commit()
+    session.refresh(category)
+    return category
+
+
+def delete_category(*, session: Session, category_id: int) -> None:
+    category = session.get(Category, category_id)
+    if category is None:
+        raise ValueError(f"Category {category_id} not found")
+    
+    # Purchases with this category will set it to "Sin clasificar" or NULL?
+    # Requirement: "ponle 'sin clasificar'" if you don't know the name.
+    # Let's set it to None when deleting the category record.
+    stmt = select(Purchase).where(Purchase.category == category.name)
+    purchases = session.exec(stmt).all()
+    for p in purchases:
+        p.category = None
+        session.add(p)
+    
+    session.delete(category)
+    session.commit()
+
+
+def auto_categorize_purchases(*, session: Session) -> int:
+    """
+    Assign categories to purchases that are 'Sin categoría' or None,
+    based on keywords in the description.
+    Returns the number of updated purchases.
+    """
+    # Define mapping of keywords to categories (normalized names)
+    keyword_map = {
+        "supermercado": ["COTO", "CARREFOUR", "JUMBO", "DISCO", "VEA", "DIA", "LA ANONIMA"],
+        "servicios": ["AYSA", "EDESUR", "EDENOR", "METROGAS", "PERSONAL", "MOVISTAR", "CLARO", "CABLEVISION", "TELECENTRO"],
+        "restaurantes": ["MC DONALDS", "BURGER KING", "STARBUCKS", "PEDIDOSYA", "RAPPI", "RESTAURANT", "CAFE", "CERVECERIA"],
+        "transporte": ["SUBE", "UBER", "CABIFY", "DIDI", "AXION", "YPF", "SHELL", "ESTACION DE SERV"],
+        "hogar": ["EASY", "SODIMAC", "FERRETERIA", "BLANQUERIA"],
+        "salud": ["OSDE", "SWISS MEDICAL", "FARMACIA", "LABORATORIO"],
+        "educacion": ["COLEGIO", "UNIVERSIDAD", "LIBRE RIA"],
+        "entretenimiento": ["NETFLIX", "SPOTIFY", "DISNEY", "CINEMA", "TEATRO"],
+    }
+
+    # Ensure categories exist in the Category table
+    for cat_name in keyword_map.keys():
+        stmt = select(Category).where(Category.name == cat_name)
+        if session.exec(stmt).first() is None:
+            session.add(Category(name=cat_name))
+    session.commit()
+
+    # Get purchases without category
+    stmt = select(Purchase).where((Purchase.category == None) | (Purchase.category == "Sin categoría"))
+    purchases = session.exec(stmt).all()
+    
+    count = 0
+    for p in purchases:
+        desc_upper = p.description.upper()
+        found_cat = None
+        for cat_name, keywords in keyword_map.items():
+            if any(k in desc_upper for k in keywords):
+                found_cat = cat_name
+                break
+        
+        if found_cat:
+            p.category = found_cat
+            session.add(p)
+            count += 1
+    
+    if count > 0:
+        session.commit()
+    
+    return count
+

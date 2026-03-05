@@ -129,7 +129,7 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 
 - **Installments (cuotas)**: Purchases can have N installments. Importing parses "x de y" format. `InstallmentSchedule` entries are auto-generated on purchase creation, one per month.
 - **FX rates**: USD→ARS exchange rates are entered manually per month via `/admin` page. If missing for a given month, USD installments are excluded from reports (not zero — omitted).
-- **Payment split**: Default is 100% to card owner. `PurchasePayer` supports percent or fixed splits across multiple people.
+- **Payment split / Transferencias**: El sistema utiliza una lógica de **Fondo Común** (Core Rule). Los ingresos se suman y los gastos comunes se pagan de ese pozo. El dinero sobrante se divide 50/50 entre los participantes. Las transferencias sugeridas buscan que, después de pagar sus gastos personales correspondientes, a ambos les quede exactamente la misma cantidad de "dinero libre" del pozo común. No cambiar esta lógica a menos que se pida explícitamente una re-arquitectura financiera.
 - **Deduplication**: Import creates SHA256 fingerprints per row (`ImportedRow`). Re-importing the same file skips already-imported rows.
 - **Exclusion heuristic**: Se excluyen pagos, promos, bonificaciones, impuestos (DB.RG 5617, IIBB PERCEP, Impuesto de sellos, Impuesto al sello), "Pago de tarjeta", "Resumen de [mes]". Sí se incluyen devoluciones por compra anulada.
 
@@ -142,7 +142,17 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 ## Scripts útiles
 
 - **`./start.sh`**: Inicia backend y frontend en paralelo. Crea virtualenv si no existe, instala deps.
-- **`examples/validate_pdf.py`**: Valida formato de PDFs. Uso: `python validate_pdf.py <archivo.pdf> [contraseña] [--debug]`
+- **`examples/validate_pdf.py`**: Valida formato de PDFs. Uso: \`python validate_pdf.py <archivo.pdf> [contraseña] [--debug]\`
+
+## Core Financial Logic (Fondo Común)
+
+Esta es la regla inamovible para el cálculo de transferencias en `crud.py -> calculate_transfers`:
+1. `Sobrante Base` = (Total Ingresos - Total Gastos Comunes) / 2
+2. `Target Cash Persona A` = Sobrante Base - Gastos Personales Persona A
+3. `Lo que Persona A debe pagar` = Ingreso Persona A - Target Cash Persona A
+4. `Transferencia` = Lo que Persona A pagó de su bolsillo - Lo que Persona A debe pagar
+
+El objetivo final es que a ambos les quede el mismo sobrante base después de gastos comunes, ajustado por sus consumos personales.
 
 ## Adding New Reports
 
