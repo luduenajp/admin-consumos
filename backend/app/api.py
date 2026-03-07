@@ -14,6 +14,7 @@ from app.crud import (
     calculate_transfers,
     create_card,
     create_debtor,
+    create_purchase,
     create_income,
     create_monthly_budget,
     create_person,
@@ -327,17 +328,21 @@ def get_report_month_breakdown(
                 description=p.description,
                 notes=p.notes,
                 category=p.category,
+                payer_name=payer_name,
+                payment_method=p.payment_method.value,
+                card_name=card_name,
                 installment_index=sch.installment_index,
                 installments_total=p.installments_total,
                 amount_ars=amt,
-                currency=str(p.currency),
+                amount_original=float(sch.amount_original),
+                currency=p.currency.value,
                 debtor_id=p.debtor_id,
                 debtor_name=debtor_name,
                 beneficiary_person_id=p.beneficiary_person_id,
                 debt_settled=p.debt_settled,
                 is_common=p.is_common,
             )
-            for p, sch, amt, debtor_name in items
+            for p, sch, amt, debtor_name, payer_name, card_name in items
             if p.id is not None
         ]
         return MonthBreakdownResponse(year_month=year_month, total_ars=total_ars, items=rows)
