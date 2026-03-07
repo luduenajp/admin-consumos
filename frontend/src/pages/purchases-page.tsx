@@ -509,7 +509,7 @@ export function PurchasesPage() {
             <div className="muted">Sin compras que coincidan con los filtros</div>
           ) : (
             <>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="tableContainer">
                 <table className="table">
                   <thead>
                     <tr>

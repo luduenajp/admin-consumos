@@ -181,7 +181,7 @@ export function DashboardPage() {
             {monthBreakdownData.items.length === 0 ? (
               <div className="muted">Sin cuotas que venzan en este mes</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="tableContainer">
                 <table className="table">
                   <thead>
                     <tr>
@@ -195,37 +195,97 @@ export function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {monthBreakdownData.items.map((row) => (
-                      <tr key={`${row.purchase_id}-${row.installment_index}`}>
-                        <td>{row.purchase_date}</td>
-                        <td>{row.description}</td>
-                        <td>{row.notes ?? '-'}</td>
-                        <td>
-                          {row.debtor_name ? (
-                            <span style={{ color: row.debt_settled ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 500 }}>
-                              {row.debtor_name} {row.debt_settled ? '(Saldado)' : ''}
-                            </span>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td>
-                          {row.installment_index}/{row.installments_total}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            className="checkbox"
-                            checked={row.is_common}
-                            onChange={(e) => commonMutation.mutate({ id: row.purchase_id, is_common: e.target.checked })}
-                            disabled={commonMutation.isPending}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 500 }}>
-                          ${row.amount_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
+                    {monthBreakdownData.items
+                      .slice()
+                      .sort((a, b) => b.amount_ars - a.amount_ars)
+                      .map((row) => (
+                        <tr key={`${row.purchase_id}-${row.installment_index}`}>
+                          <td>{row.purchase_date}</td>
+                          <td>
+                            <div className="tooltip-container">
+                              <span style={{ borderBottom: '1px dotted var(--color-muted)', cursor: 'help' }}>
+                                {row.description}
+                              </span>
+                              <div className="tooltip-content">
+                                <div className="tooltip-header">
+                                  <span>Detalles de Pago</span>
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: row.is_common ? 'var(--color-primary-light)' : 'var(--color-bg)',
+                                    color: row.is_common ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                                    border: '1px solid var(--color-border)'
+                                  }}>
+                                    {row.is_common ? 'Gasto Común' : 'Gasto Particular'}
+                                  </span>
+                                </div>
+                                <div className="tooltip-row">
+                                  <span className="tooltip-label">Categoría:</span>
+                                  <span className="tooltip-value">{row.category || 'Sin categoría'}</span>
+                                </div>
+                                <div className="tooltip-row">
+                                  <span className="tooltip-label">Pagador:</span>
+                                  <span className="tooltip-value">{row.payer_name}</span>
+                                </div>
+                                <div className="tooltip-row">
+                                  <span className="tooltip-label">Método:</span>
+                                  <span className="tooltip-value">
+                                    {row.payment_method === 'card' ? 'Tarjeta' :
+                                      row.payment_method === 'transfer' ? 'Transferencia' :
+                                        row.payment_method === 'cash' ? 'Efectivo' : row.payment_method}
+                                    {row.card_name && ` (${row.card_name})`}
+                                  </span>
+                                </div>
+                                {(row.currency !== 'ARS' || row.amount_original !== row.amount_ars) && (
+                                  <div className="tooltip-row">
+                                    <span className="tooltip-label">Original:</span>
+                                    <span className="tooltip-value">
+                                      {String(row.currency).includes('.') ? String(row.currency).split('.').pop() : row.currency} {row.amount_original.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                )}
+                                {row.debtor_id && (
+                                  <div className="tooltip-row" style={{ marginTop: '8px', padding: '4px', borderRadius: '4px', backgroundColor: 'var(--color-error-bg)' }}>
+                                    <span className="tooltip-label" style={{ color: 'var(--color-error-text)' }}>Deudor:</span>
+                                    <span className="tooltip-value" style={{ color: 'var(--color-error-text)' }}>
+                                      {row.debtor_name} {row.debt_settled ? '(Saldado)' : '(Pendiente)'}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="tooltip-footer">
+                                  Compra realizada el {row.purchase_date}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{row.notes ?? '-'}</td>
+                          <td>
+                            {row.debtor_name ? (
+                              <span style={{ color: row.debt_settled ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 500 }}>
+                                {row.debtor_name} {row.debt_settled ? '(Saldado)' : ''}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            {row.installment_index}/{row.installments_total}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              className="checkbox"
+                              checked={row.is_common}
+                              onChange={(e) => commonMutation.mutate({ id: row.purchase_id, is_common: e.target.checked })}
+                              disabled={commonMutation.isPending}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 500 }}>
+                            ${row.amount_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

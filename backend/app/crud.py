@@ -261,12 +261,14 @@ def export_dashboard_to_excel(*, session: Session, year_month: str) -> bytes:
     # 3. Purchase Details (Month Breakdown)
     total_ars, items = report_month_breakdown(session=session, year_month=year_month)
     breakdown_rows = []
-    for p, sch, amt, debtor_name in items:
+    for p, sch, amt, debtor_name, payer_name, card_name in items:
         breakdown_rows.append({
             "Fecha": p.purchase_date,
             "Descripción": p.description,
             "Detalle": p.notes,
             "Categoría": p.category,
+            "Pagador": payer_name,
+            "Tarjeta": card_name or "-",
             "Cuota": f"{sch.installment_index}/{p.installments_total}",
             "Monto (ARS)": amt,
             "Deudor": debtor_name,
@@ -294,7 +296,7 @@ def export_dashboard_to_excel(*, session: Session, year_month: str) -> bytes:
         next_month = (dt + relativedelta(months=1)).strftime("%Y-%m")
         total_next, items_next = report_month_breakdown(session=session, year_month=next_month)
         next_rows = []
-        for p, sch, amt, debtor_name in items_next:
+        for p, sch, amt, debtor_name, payer_name, card_name in items_next:
             next_rows.append({
                 "Fecha": p.purchase_date,
                 "Descripción": p.description,
@@ -548,18 +550,20 @@ def report_month_breakdown(
     year_month: str,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
-) -> tuple[float, list[tuple[Purchase, InstallmentSchedule, float, Optional[str]]]]:
+) -> tuple[float, list[tuple[Purchase, InstallmentSchedule, float, Optional[str], str, Optional[str]]]]:
     """
     Desglose de cuotas que vencen en un mes dado.
-    Returns (total_ars, list of (purchase, schedule, amount_ars, debtor_name)).
+    Returns (total_ars, list of (purchase, schedule, amount_ars, debtor_name, payer_name, card_name)).
     """
     fx_map = _fx_rate_map(session=session)
 
+    OwnerPerson = aliased(Person)
     stmt = (
-        select(InstallmentSchedule, Purchase, Debtor, Card)
+        select(InstallmentSchedule, Purchase, Debtor, Card, OwnerPerson)
         .join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
         .outerjoin(Debtor, Debtor.id == Purchase.debtor_id)
         .outerjoin(Card, Card.id == Purchase.card_id)
+        .outerjoin(OwnerPerson, OwnerPerson.id == Purchase.owner_person_id)
         .where(InstallmentSchedule.year_month == year_month)
     )
     if card_id is not None:
@@ -573,11 +577,23 @@ def report_month_breakdown(
         for p in payers:
             payer_map.setdefault(p.purchase_id, []).append(p)
 
-    items: list[tuple[Purchase, InstallmentSchedule, float, Optional[str]]] = []
+    items: list[tuple[Purchase, InstallmentSchedule, float, Optional[str], str, Optional[str]]] = []
     total_ars = 0.0
 
-    for sch, purchase, debtor, card in results:
+    for sch, purchase, debtor, card, owner in results:
         debtor_name = debtor.name if debtor else None
+        
+        # Determine payer name
+        if owner:
+            payer_name = owner.name
+        elif card:
+            card_owner = session.get(Person, card.owner_person_id)
+            payer_name = card_owner.name if card_owner else "Desconocido"
+        else:
+            payer_name = "Desconocido"
+            
+        card_name = card.name if card else None
+        
         amount_original = float(sch.amount_original)
         if sch.currency == CurrencyCode.ARS:
             amount_ars = amount_original
@@ -591,8 +607,8 @@ def report_month_breakdown(
             payers = payer_map.get(sch.purchase_id, [])
             if not payers:
                 # No explicit payers: owner gets 100%
-                owner_id = purchase.owner_person_id if purchase.owner_person_id is not None else (card.owner_person_id if card else None)
-                if owner_id != person_id:
+                actual_owner_id = purchase.owner_person_id if purchase.owner_person_id is not None else (card.owner_person_id if card else None)
+                if actual_owner_id != person_id:
                     amount_ars = 0.0
                 # else: amount_ars remains the same (100%)
             else:
@@ -610,7 +626,7 @@ def report_month_breakdown(
                 continue
 
         total_ars += amount_ars
-        items.append((purchase, sch, round(amount_ars, 2), debtor_name))
+        items.append((purchase, sch, round(amount_ars, 2), debtor_name, payer_name, card_name))
 
     return (round(total_ars, 2), items)
 

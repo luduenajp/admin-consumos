@@ -17,11 +17,11 @@
   --color-error: #ef4444;
   --color-success: #22c55e;
   --color-muted: #94a3b8;
-  
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
-  
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -69,4 +69,77 @@ a:hover {
 ::selection {
   background: var(--color-primary-light);
   color: var(--color-primary);
+}
+
+/* Tooltip Styles */
+.tooltip-container {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.tooltip-content {
+  visibility: hidden;
+  position: absolute;
+  z-index: 10000;
+  top: calc(100% + 5px);
+  left: 0;
+  width: max-content;
+  max-width: 300px;
+  padding: 16px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform: translateY(-5px);
+  pointer-events: none;
+  white-space: normal;
+}
+
+.tooltip-container:hover .tooltip-content {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tooltip-header {
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 12px;
+}
+
+.tooltip-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.tooltip-value {
+  font-weight: 600;
+  text-align: right;
+}
+
+.tooltip-footer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+  font-style: italic;
+  font-size: 0.75rem;
+  color: var(--color-muted);
 }

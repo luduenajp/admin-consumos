@@ -153,9 +153,13 @@ class MonthBreakdownRow(BaseModel):
     description: str
     notes: Optional[str] = None
     category: Optional[str]
+    payer_name: Optional[str] = None
+    payment_method: Optional[str] = None
+    card_name: Optional[str] = None
     installment_index: int
     installments_total: int
     amount_ars: float
+    amount_original: float
     currency: str
     debtor_id: Optional[int] = None
     debtor_name: Optional[str] = None

@@ -69,9 +69,13 @@ export interface MonthBreakdownRow {
   description: string
   notes?: string | null
   category: string | null
+  payer_name?: string | null
+  payment_method?: string | null
+  card_name?: string | null
   installment_index: number
   installments_total: number
   amount_ars: number
+  amount_original: number
   currency: string
   debtor_id?: number | null
   debtor_name?: string | null
