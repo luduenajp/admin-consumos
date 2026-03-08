@@ -24,5 +24,7 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    // Permitir acceso desde www.consumofamiliar.com
+    allowedHosts: ['www.consumofamiliar.com', 'localhost', '127.0.0.1'],
   },
 })
