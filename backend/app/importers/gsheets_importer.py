@@ -22,6 +22,9 @@ def parse_gsheets_csv(csv_content: str) -> list[ParsedPurchaseRow]:
     reader = csv.DictReader(f)
     out = []
 
+    # Track occurrences
+    occurrence_tracker: dict[tuple, int] = {}
+
     for row in reader:
         # Example row:
         # fecha: 2026-02-19 00:00:00
@@ -47,6 +50,12 @@ def parse_gsheets_csv(csv_content: str) -> list[ParsedPurchaseRow]:
 
         # Using statement_year_month as the month of the purchase for transfers
         statement_ym = purchase_date.strftime("%Y-%m")
+        amount_val = round(amount, 2)
+
+        # Update occurrence count
+        row_key = (purchase_date, description, amount_val, 1, 1)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
 
         out.append(
             ParsedPurchaseRow(
@@ -55,8 +64,9 @@ def parse_gsheets_csv(csv_content: str) -> list[ParsedPurchaseRow]:
                 currency=currency,
                 installment_index=1,
                 installments_total=1,
-                installment_amount=round(amount, 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 

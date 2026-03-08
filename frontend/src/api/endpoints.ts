@@ -85,11 +85,13 @@ export function fetchMonthBreakdown(params: {
   yearMonth: string
   cardId?: number
   personId?: number
+  isCommon?: boolean
 }): Promise<MonthBreakdownResponse> {
   const qs = new URLSearchParams()
   qs.set('year_month', params.yearMonth)
   if (params.cardId) qs.set('card_id', String(params.cardId))
   if (params.personId) qs.set('person_id', String(params.personId))
+  if (params.isCommon !== undefined) qs.set('is_common', String(params.isCommon))
   return getJson<MonthBreakdownResponse>(`/api/reports/month-breakdown?${qs.toString()}`)
 }
 
@@ -105,11 +107,13 @@ export function fetchTimeline(params?: {
   monthsAhead?: number
   cardId?: number
   personId?: number
+  isCommon?: boolean
 }): Promise<TimelineRow[]> {
   const qs = new URLSearchParams()
   if (params?.monthsAhead) qs.set('months_ahead', String(params.monthsAhead))
   if (params?.cardId) qs.set('card_id', String(params.cardId))
   if (params?.personId) qs.set('person_id', String(params.personId))
+  if (params?.isCommon !== undefined) qs.set('is_common', String(params.isCommon))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return getJson<TimelineRow[]>(`/api/reports/timeline${suffix}`)
 }
@@ -142,11 +146,13 @@ export function fetchCategorySpending(params?: {
   cardId?: number
   personId?: number
   yearMonth?: string
+  isCommon?: boolean
 }): Promise<CategorySpendingRow[]> {
   const qs = new URLSearchParams()
   if (params?.cardId) qs.set('card_id', String(params.cardId))
   if (params?.personId) qs.set('person_id', String(params.personId))
   if (params?.yearMonth) qs.set('year_month', params.yearMonth)
+  if (params?.isCommon !== undefined) qs.set('is_common', String(params.isCommon))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return getJson<CategorySpendingRow[]>(`/api/reports/category-spending${suffix}`)
 }

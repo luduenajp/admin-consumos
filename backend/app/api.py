@@ -312,6 +312,7 @@ def get_report_month_breakdown(
     year_month: str,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
+    is_common: Optional[bool] = None,
 ) -> MonthBreakdownResponse:
     """Desglose de cuotas que vencen en un mes dado. year_month formato YYYY-MM."""
     with get_session() as session:
@@ -320,6 +321,7 @@ def get_report_month_breakdown(
             year_month=year_month,
             card_id=card_id,
             person_id=person_id,
+            is_common=is_common,
         )
         rows = [
             MonthBreakdownRow(
@@ -357,12 +359,12 @@ def get_report_monthly(card_id: Optional[int] = None, person_id: Optional[int] =
 
 @router.get("/reports/timeline", response_model=list[TimelineRow])
 def get_report_timeline(
-    months_ahead: int = 12, card_id: Optional[int] = None, person_id: Optional[int] = None
+    months_ahead: int = 12, card_id: Optional[int] = None, person_id: Optional[int] = None, is_common: Optional[bool] = None
 ) -> list[TimelineRow]:
     """Return future installment commitments timeline."""
     with get_session() as session:
         rows = report_installment_timeline(
-            session=session, months_ahead=months_ahead, card_id=card_id, person_id=person_id
+            session=session, months_ahead=months_ahead, card_id=card_id, person_id=person_id, is_common=is_common
         )
         return [TimelineRow(year_month=ym, total_ars=total) for ym, total in rows]
 
@@ -421,11 +423,12 @@ def get_category_spending(
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
     year_month: Optional[str] = None,
+    is_common: Optional[bool] = None,
 ) -> list[CategorySpendingRow]:
     """Return spending totals by category."""
     with get_session() as session:
         rows = report_spending_by_category(
-            session=session, card_id=card_id, person_id=person_id, year_month=year_month
+            session=session, card_id=card_id, person_id=person_id, year_month=year_month, is_common=is_common
         )
         return [CategorySpendingRow(category=cat, total_ars=total) for cat, total in rows]
 

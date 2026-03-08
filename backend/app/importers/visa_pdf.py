@@ -110,16 +110,25 @@ def _detect_statement_year_month_from_text(text: str) -> Optional[str]:
     """Busca el mes de cierre en el texto del PDF."""
     # MercadoPago: "Cierre actual 5 de febrero" o "Este es tu resumen de febrero"
     m = re.search(
-        r"(?:cierre\s+actual|resumen\s+de)\s+(?:\d+\s+de\s+)?(\w+)\b",
+        r"(cierre\s+actual|resumen\s+de)\s+(?:\d+\s+de\s+)?(\w+)\b",
         text,
         re.IGNORECASE,
     )
     if m:
-        mes_nombre = m.group(1).lower()
+        prefix = m.group(1).lower()
+        mes_nombre = m.group(2).lower()
         mes = _MES_NOMBRE.get(mes_nombre) or _MES_ABREV.get(mes_nombre[:3])
         if mes:
             years = [int(x) for x in re.findall(r"\b(20\d{2})\b", text)]
             y = max(years) if years else 2026
+            
+            # Si dice "resumen de X", X es el mes de vencimiento. El mes de cierre lógico es el anterior.
+            if "resumen de" in prefix:
+                mes -= 1
+                if mes == 0:
+                    mes = 12
+                    y -= 1
+                    
             return f"{y:04d}-{mes:02d}"
 
     # MercadoPago / genérico: "Fecha de cierre: 22/01/2026" o "Cierre: 22/01/2026"
@@ -189,6 +198,10 @@ def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedP
     out: list[ParsedPurchaseRow] = []
     in_movements = False
 
+    # Track occurrences of identical rows in this file to handle multiple same-day identical purchases
+    # Key: (date, description, amount, current_installment, total_installments)
+    occurrence_tracker: dict[tuple, int] = {}
+
     for line in full_text.splitlines():
         line = line.strip()
         if "FECHA COMPROBANTE DETALLE" in line.upper() and "PESOS" in line.upper():
@@ -202,19 +215,20 @@ def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedP
             # Línea sin fecha al inicio puede ser continuación de la anterior
             continue
 
-        dd, mm, yy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        cols = m.groups()
+        dd, mm, yy = int(cols[0]), int(cols[1]), int(cols[2])
         year = 2000 + yy if yy < 50 else 1900 + yy
         try:
             purchase_date = date(year, mm, dd)
         except ValueError:
             continue
 
-        description = m.group(4).strip()
+        description = cols[3].strip()
         if not description or _is_excluded_description(description):
             continue
 
-        amount_ars = _parse_money(m.group(5))
-        amount_usd = _parse_money(m.group(6))
+        amount_ars = _parse_money(cols[4])
+        amount_usd = _parse_money(cols[5])
 
         currency: Optional[str] = None
         amount: Optional[float] = None
@@ -231,6 +245,12 @@ def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedP
             continue
 
         installment_index, installments_total = _parse_installments(description)
+        amount_val = round(float(amount), 2)
+
+        # Update occurrence count
+        row_key = (purchase_date, description, amount_val, installment_index, installments_total)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
 
         out.append(
             ParsedPurchaseRow(
@@ -239,8 +259,9 @@ def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedP
                 currency=currency,
                 installment_index=installment_index,
                 installments_total=installments_total,
-                installment_amount=round(float(amount), 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 
@@ -251,6 +272,9 @@ def _parse_nacion_mastercard_format(full_text: str, statement_ym: str) -> list[P
     """Parsea formato Banco Nación Mastercard: DETALLES DEL MES / CUOTAS DEL MES."""
     out: list[ParsedPurchaseRow] = []
     in_movements = False
+
+    # Track occurrences
+    occurrence_tracker: dict[tuple, int] = {}
 
     for line in full_text.splitlines():
         line = line.strip()
@@ -286,6 +310,12 @@ def _parse_nacion_mastercard_format(full_text: str, statement_ym: str) -> list[P
         if amount is None or amount <= 0:
             continue
 
+        amount_val = round(float(amount), 2)
+        # Update occurrence count
+        row_key = (purchase_date, description, amount_val, installment_index, installments_total)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
+
         out.append(
             ParsedPurchaseRow(
                 purchase_date=purchase_date,
@@ -293,8 +323,9 @@ def _parse_nacion_mastercard_format(full_text: str, statement_ym: str) -> list[P
                 currency="ARS",
                 installment_index=installment_index,
                 installments_total=installments_total,
-                installment_amount=round(float(amount), 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 
@@ -324,6 +355,9 @@ def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[Par
     """Parsea formato MercadoPago app: DD/mmm descripción $ monto."""
     out: list[ParsedPurchaseRow] = []
     stmt_year, stmt_month = int(statement_ym[:4]), int(statement_ym[5:7])
+
+    # Track occurrences
+    occurrence_tracker: dict[tuple, int] = {}
 
     for line in full_text.splitlines():
         line = line.strip()
@@ -360,6 +394,12 @@ def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[Par
             continue
 
         installment_index, installments_total = _parse_installments(description)
+        amount_val = round(float(amount), 2)
+
+        # Update occurrence count
+        row_key = (purchase_date, description, amount_val, installment_index, installments_total)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
 
         out.append(
             ParsedPurchaseRow(
@@ -368,8 +408,9 @@ def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[Par
                 currency="ARS",
                 installment_index=installment_index,
                 installments_total=installments_total,
-                installment_amount=round(float(amount), 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 
@@ -379,6 +420,9 @@ def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[Par
 def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedPurchaseRow]:
     """Parsea formato MercadoPago PDF alternativo (DD/MM/YYYY)."""
     out: list[ParsedPurchaseRow] = []
+
+    # Track occurrences
+    occurrence_tracker: dict[tuple, int] = {}
 
     for line in full_text.splitlines():
         line = line.strip()
@@ -423,6 +467,12 @@ def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedP
             continue
 
         installment_index, installments_total = _parse_installments(description)
+        amount_val = round(float(amount), 2)
+
+        # Update occurrence count
+        row_key = (purchase_date, description, amount_val, installment_index, installments_total)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
 
         out.append(
             ParsedPurchaseRow(
@@ -431,8 +481,9 @@ def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedP
                 currency=currency,
                 installment_index=installment_index,
                 installments_total=installments_total,
-                installment_amount=round(float(amount), 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 
@@ -477,6 +528,9 @@ def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPur
     # Otros formatos: tablas con encabezados
     out = []
     header_indices: Optional[dict[str, int]] = None
+
+    # Track occurrences
+    occurrence_tracker: dict[tuple, int] = {}
 
     for table in all_tables:
         if not table:
@@ -547,6 +601,12 @@ def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPur
                 if idx < len(row_cells):
                     cuotas_val = row_cells[idx]
             installment_index, installments_total = _parse_installments(cuotas_val)
+            amount_val = round(float(amount), 2)
+
+            # Update occurrence count
+            row_key = (fecha, descripcion, amount_val, installment_index, installments_total)
+            occ_index = occurrence_tracker.get(row_key, 0) + 1
+            occurrence_tracker[row_key] = occ_index
 
             out.append(
                 ParsedPurchaseRow(
@@ -555,8 +615,9 @@ def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPur
                     currency=currency,
                     installment_index=installment_index,
                     installments_total=installments_total,
-                    installment_amount=round(float(amount), 2),
+                    installment_amount=amount_val,
                     statement_year_month=statement_ym,
+                    occurrence_index=occ_index,
                 )
             )
 

@@ -222,8 +222,9 @@ def find_existing_purchase_for_installment_import(
     currency: CurrencyCode,
     installments_total: int,
     installment_amount_original: float,
+    exclude_ids: list[int] | None = None,
 ) -> Optional[Purchase]:
-    normalized = normalize_purchase_description(description=description)
+    normalized_input = normalize_purchase_description(description=description)
     stmt = select(Purchase).where(
         Purchase.card_id == card_id,
         Purchase.purchase_date == purchase_date,
@@ -232,14 +233,28 @@ def find_existing_purchase_for_installment_import(
     )
 
     candidates = list(session.exec(stmt))
+    if exclude_ids:
+        candidates = [c for c in candidates if c.id not in exclude_ids]
+    
+    # helper to check if amount is close enough (centavos)
+    def amount_matches(p: Purchase) -> bool:
+        diff = abs(p.installment_amount_original - installment_amount_original)
+        relative_diff = diff / installment_amount_original if installment_amount_original != 0 else 0
+        return diff <= 0.01 or relative_diff <= 0.01
+
+    # Pass 1: Exact normalized description match
     for c in candidates:
-        if normalize_purchase_description(description=c.description) == normalized:
-            # Be tolerant to small differences in installment_amount_original (centavos)
-            # Accept if difference is less than 1% or less than 0.01 units
-            diff = abs(c.installment_amount_original - installment_amount_original)
-            relative_diff = diff / installment_amount_original if installment_amount_original != 0 else 0
-            if diff <= 0.01 or relative_diff <= 0.01:
+        if normalize_purchase_description(description=c.description) == normalized_input:
+            if amount_matches(c):
                 return c
+                
+    # Pass 2: Fuzzy match (no description check)
+    # If we have only ONE candidate for this date, card, currency, and amount,
+    # assume it is the same purchase even if the description differs (supports manual custom names).
+    matching_amounts = [c for c in candidates if amount_matches(c)]
+    if len(matching_amounts) == 1:
+        return matching_amounts[0]
+
     return None
 
 
@@ -550,6 +565,7 @@ def report_month_breakdown(
     year_month: str,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
+    is_common: Optional[bool] = None,
 ) -> tuple[float, list[tuple[Purchase, InstallmentSchedule, float, Optional[str], str, Optional[str]]]]:
     """
     Desglose de cuotas que vencen en un mes dado.
@@ -568,6 +584,8 @@ def report_month_breakdown(
     )
     if card_id is not None:
         stmt = stmt.where(Purchase.card_id == card_id)
+    if is_common is not None:
+        stmt = stmt.where(Purchase.is_common == is_common)
 
     results = list(session.exec(stmt))
 
@@ -645,6 +663,7 @@ def report_spending_by_category(
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
     year_month: Optional[str] = None,
+    is_common: Optional[bool] = None,
 ) -> list[tuple[str, float]]:
     """
     Return total spending per category (category -> total_ars).
@@ -662,6 +681,8 @@ def report_spending_by_category(
         stmt = stmt.where(Purchase.card_id == card_id)
     if year_month is not None:
         stmt = stmt.where(InstallmentSchedule.year_month == year_month)
+    if is_common is not None:
+        stmt = stmt.where(Purchase.is_common == is_common)
 
     results = list(session.exec(stmt))
 
@@ -712,6 +733,7 @@ def report_installment_timeline(
     months_behind: int = 3,
     card_id: Optional[int] = None,
     person_id: Optional[int] = None,
+    is_common: Optional[bool] = None,
 ) -> list[tuple[str, float]]:
     """
     Return timeline of installments (year_month -> total_ars).
@@ -728,9 +750,13 @@ def report_installment_timeline(
         InstallmentSchedule.year_month >= start_ym, InstallmentSchedule.year_month <= end_ym
     )
 
-    # Apply card filter
-    if card_id is not None:
-        stmt = stmt.join(Purchase, Purchase.id == InstallmentSchedule.purchase_id).where(Purchase.card_id == card_id)
+    # Ensure Purchase is joined if card_id or is_common filter is applied
+    if card_id is not None or is_common is not None:
+        stmt = stmt.join(Purchase, Purchase.id == InstallmentSchedule.purchase_id)
+        if card_id is not None:
+            stmt = stmt.where(Purchase.card_id == card_id)
+        if is_common is not None:
+            stmt = stmt.where(Purchase.is_common == is_common)
 
     schedules = list(session.exec(stmt))
 
