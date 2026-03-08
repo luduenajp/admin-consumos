@@ -56,6 +56,7 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default
 
     created = 0
     skipped = 0
+    claimed_ids: list[int] = []
 
     with get_session() as session:
         for r in rows:
@@ -80,6 +81,7 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default
                 currency=CurrencyCode(r.currency),
                 installments_total=r.installments_total,
                 installment_amount_original=r.installment_amount,
+                exclude_ids=claimed_ids,
             )
 
             if existing is None:
@@ -103,6 +105,7 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default
             else:
                 purchase = existing
                 if purchase.id is not None:
+                    claimed_ids.append(purchase.id)
                     if not _has_installment_schedule(
                         session=session,
                         purchase_id=purchase.id,
@@ -172,6 +175,7 @@ def import_visa_pdf_endpoint(
 
     created = 0
     skipped = 0
+    claimed_ids: list[int] = []
 
     with get_session() as session:
         for r in rows:
@@ -194,6 +198,7 @@ def import_visa_pdf_endpoint(
                 currency=CurrencyCode(r.currency),
                 installments_total=r.installments_total,
                 installment_amount_original=r.installment_amount,
+                exclude_ids=claimed_ids,
             )
 
             if existing is None:
@@ -217,6 +222,7 @@ def import_visa_pdf_endpoint(
             else:
                 purchase = existing
                 if purchase.id is not None:
+                    claimed_ids.append(purchase.id)
                     if not _has_installment_schedule(
                         session=session,
                         purchase_id=purchase.id,

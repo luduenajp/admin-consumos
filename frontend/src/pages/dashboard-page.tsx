@@ -15,6 +15,7 @@ import { TimelineChart } from '../components/TimelineChart'
 import { CategoryChart } from '../components/CategoryChart'
 import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
 import { TransferCalculationCard } from '../components/TransferCalculationCard'
+import { PurchaseForm } from '../components/PurchaseForm'
 
 function getCurrentYearMonth(): string {
   const now = new Date()
@@ -36,7 +37,11 @@ function buildMonthOptions(): { value: string; label: string }[] {
 export function DashboardPage() {
   const [personFilter, setPersonFilter] = useState<string>('')
   const [monthFilter, setMonthFilter] = useState<string>(() => getCurrentYearMonth())
+  const [expenseTypeFilter, setExpenseTypeFilter] = useState<string>('all')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const personId = personFilter ? Number(personFilter) : undefined
+  const isCommon = expenseTypeFilter === 'all' ? undefined : expenseTypeFilter === 'common'
   const monthOptions = useMemo(() => buildMonthOptions(), [])
 
   const queryClient = useQueryClient()
@@ -48,8 +53,8 @@ export function DashboardPage() {
 
 
   const { data: timelineData, isLoading: timelineLoading } = useQuery({
-    queryKey: ['reports', 'timeline', { personId }],
-    queryFn: () => fetchTimeline({ monthsAhead: 12, personId }),
+    queryKey: ['reports', 'timeline', { personId, isCommon }],
+    queryFn: () => fetchTimeline({ monthsAhead: 12, personId, isCommon }),
   })
 
   const { data: debtData, isLoading: debtLoading } = useQuery({
@@ -58,8 +63,8 @@ export function DashboardPage() {
   })
 
   const { data: monthBreakdownData, isLoading: monthBreakdownLoading } = useQuery({
-    queryKey: ['reports', 'month-breakdown', { yearMonth: monthFilter, personId }],
-    queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId }),
+    queryKey: ['reports', 'month-breakdown', { yearMonth: monthFilter, personId, isCommon }],
+    queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId, isCommon }),
   })
 
   const { data: categoriesData } = useQuery({
@@ -68,8 +73,8 @@ export function DashboardPage() {
   })
 
   const { data: categorySpendingData, isLoading: categorySpendingLoading } = useQuery({
-    queryKey: ['reports', 'category-spending', { personId, yearMonth: monthFilter }],
-    queryFn: () => fetchCategorySpending({ personId, yearMonth: monthFilter }),
+    queryKey: ['reports', 'category-spending', { personId, yearMonth: monthFilter, isCommon }],
+    queryFn: () => fetchCategorySpending({ personId, yearMonth: monthFilter, isCommon }),
   })
 
   const commonMutation = useMutation({
@@ -81,6 +86,18 @@ export function DashboardPage() {
     },
   })
 
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) return ' ↕';
+    return sortConfig.direction === 'asc' ? ' ↑' : ' ↓';
+  };
 
   return (
     <section className="page">
@@ -126,7 +143,28 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-          <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+          <div className="formRow" style={{ marginBottom: 0 }}>
+            <label className="label">Tipo de gasto</label>
+            <select
+              className="input"
+              style={{ width: '180px' }}
+              value={expenseTypeFilter}
+              onChange={(e) => setExpenseTypeFilter(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              <option value="common">Comunes</option>
+              <option value="personal">Personales</option>
+            </select>
+            <div className="hint">Filtro por tipo de gasto</div>
+          </div>
+          <div style={{ marginLeft: 'auto', alignSelf: 'center', display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="button"
+              style={{ background: 'var(--color-primary)', color: 'white' }}
+            >
+              {showAddForm ? '✕ Cancelar' : '+ Nueva compra'}
+            </button>
             <button
               onClick={() => {
                 window.location.href = `/api/reports/export-excel?year_month=${monthFilter}`
@@ -139,6 +177,16 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {showAddForm && (
+        <div className="panel" style={{ border: '1px solid var(--color-primary)', animation: 'fadeIn 0.3s ease' }}>
+          <div className="panelTitle">Nueva compra</div>
+          <PurchaseForm
+            onSuccess={() => setShowAddForm(false)}
+            onCancel={() => setShowAddForm(false)}
+          />
+        </div>
+      )}
 
       {/* Top Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
@@ -185,19 +233,30 @@ export function DashboardPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Fecha compra</th>
-                      <th>Descripción</th>
-                      <th>Detalle</th>
-                      <th>Deudor</th>
-                      <th>Cuota</th>
-                      <th style={{ textAlign: 'center' }}>Común</th>
-                      <th style={{ textAlign: 'right' }}>Monto (ARS)</th>
+                      <th onClick={() => requestSort('purchase_date')} style={{ cursor: 'pointer', userSelect: 'none' }}>Fecha compra{getSortIcon('purchase_date')}</th>
+                      <th onClick={() => requestSort('description')} style={{ cursor: 'pointer', userSelect: 'none' }}>Descripción{getSortIcon('description')}</th>
+                      <th onClick={() => requestSort('notes')} style={{ cursor: 'pointer', userSelect: 'none' }}>Detalle{getSortIcon('notes')}</th>
+                      <th onClick={() => requestSort('debtor_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>Deudor{getSortIcon('debtor_name')}</th>
+                      <th onClick={() => requestSort('installment_index')} style={{ cursor: 'pointer', userSelect: 'none' }}>Cuota{getSortIcon('installment_index')}</th>
+                      <th onClick={() => requestSort('is_common')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}>Común{getSortIcon('is_common')}</th>
+                      <th onClick={() => requestSort('amount_ars')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>Monto (ARS){getSortIcon('amount_ars')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {monthBreakdownData.items
                       .slice()
-                      .sort((a, b) => b.amount_ars - a.amount_ars)
+                      .sort((a, b) => {
+                        if (sortConfig !== null) {
+                          let aValue = a[sortConfig.key as keyof typeof a];
+                          let bValue = b[sortConfig.key as keyof typeof b];
+                          if (aValue === null || aValue === undefined) aValue = '';
+                          if (bValue === null || bValue === undefined) bValue = '';
+                          if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                          if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                          return 0;
+                        }
+                        return b.amount_ars - a.amount_ars;
+                      })
                       .map((row) => (
                         <tr key={`${row.purchase_id}-${row.installment_index}`}>
                           <td>{row.purchase_date}</td>

@@ -23,6 +23,7 @@ class ParsedPurchaseRow:
     installments_total: int
     installment_amount: float
     statement_year_month: str  # YYYY-MM
+    occurrence_index: int = 1
 
 
 def _parse_ddmmyyyy(value: object) -> Optional[date]:
@@ -184,6 +185,10 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
 
     out: list[ParsedPurchaseRow] = []
     last_date: Optional[date] = None
+    
+    # Track occurrences of identical rows in this file to handle multiple same-day identical purchases
+    # Key: (date, description, amount, current_installment, total_installments)
+    occurrence_tracker: dict[tuple, int] = {}
 
     for _, r in df.iterrows():
         # Try to get date from current row
@@ -224,6 +229,12 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
             continue
 
         installment_index, installments_total = _parse_installments(r.get("Cuotas"))
+        amount_val = round(float(amount), 2)
+
+        # Update occurrence count
+        row_key = (d, description, amount_val, installment_index, installments_total)
+        occ_index = occurrence_tracker.get(row_key, 0) + 1
+        occurrence_tracker[row_key] = occ_index
 
         out.append(
             ParsedPurchaseRow(
@@ -232,8 +243,9 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
                 currency=currency,
                 installment_index=installment_index,
                 installments_total=installments_total,
-                installment_amount=round(float(amount), 2),
+                installment_amount=amount_val,
                 statement_year_month=statement_ym,
+                occurrence_index=occ_index,
             )
         )
 
@@ -251,6 +263,7 @@ def compute_row_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseR
         "installments_total": row.installments_total,
         "installment_amount": row.installment_amount,
         "statement_year_month": row.statement_year_month,
+        "occurrence_index": row.occurrence_index,
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
