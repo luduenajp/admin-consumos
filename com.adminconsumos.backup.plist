@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adminconsumos.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/pablo/github/admin-consumos/backup_db.sh</string>
+  </array>
+
+  <!-- Ejecutar todos los dias a las 03:00 AM -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- También correr al cargarse (por si la Mac estuvo apagada a las 3am) -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/pablo/Library/Logs/admin-consumos/backup.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/pablo/Library/Logs/admin-consumos/backup.log</string>
+</dict>
+</plist>
