@@ -1081,7 +1081,9 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
                 if missing_p:
                     person_id_to_name[missing_p.id] = missing_p.name
 
-    income_by_person_id = {inc["person_id"]: inc["amount"] for inc in ingresos}
+    income_by_person_id = defaultdict(float)
+    for inc in ingresos:
+        income_by_person_id[inc["person_id"]] += float(inc["amount"])
 
     # Calculate what each person should pay using the Common Pool logic:
     # 1. Target Base Take Home = (Total Income - Total Common Expenses) / num_people
@@ -1189,6 +1191,9 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             "adjustment": round(adjustment, 2),
             "difference": round(difference, 2),
         })
+
+    balance_delta = round(sum(gp["difference"] for gp in gastos_por_persona), 2)
+    is_balanced = abs(balance_delta) <= 0.01
     
     # Calculate transfers
     transferencias = []
@@ -1222,6 +1227,8 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
         "total_ingresos": total_ingresos,
         "gastos_por_persona": gastos_por_persona,
         "transferencias": transferencias,
+        "is_balanced": is_balanced,
+        "balance_delta": balance_delta,
         "transferencias_internas": transferencias_internas_rows
     }
 
