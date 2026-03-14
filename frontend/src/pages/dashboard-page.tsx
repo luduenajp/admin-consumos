@@ -194,7 +194,7 @@ export function DashboardPage() {
                 window.location.href = `/api/reports/export-excel?year_month=${monthFilter}`
               }}
               className="button"
-              style={{ background: '#27ae60', color: 'white', borderColor: '#2ecc71', fontWeight: 600 }}
+              style={{ background: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)', fontWeight: 600 }}
             >
               📊 Exportar Excel
             </button>

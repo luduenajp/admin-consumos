@@ -100,6 +100,8 @@ def list_fx_rates(*, session: Session) -> list[FxRate]:
 
 
 def _round_money(value: float) -> float:
+    # +1e-9 nudges values like 999.99499999... up to 999.995 so they round to 1000.00
+    # instead of 999.99. This compensates for floating-point representation error.
     return round(float(value) + 1e-9, 2)
 
 
@@ -454,12 +456,18 @@ def bulk_update_purchases(*, session: Session, payload: schemas.BulkPurchaseUpda
 
 
 def delete_purchase(*, session: Session, purchase_id: int) -> None:
-    """Delete a purchase and all its related installments and payers."""
+    """Delete a purchase and all its related installments and payers.
+
+    Uses explicit raw SQL deletes instead of SQLModel cascade because SQLite's
+    cascade-on-delete requires the FK to be declared with ON DELETE CASCADE at the
+    DDL level, which SQLModel doesn't emit by default. If a new child table is ever
+    added (e.g. attachments), remember to add its DELETE here before the parent row.
+    """
     from sqlalchemy import text as sa_text
     purchase = session.get(Purchase, purchase_id)
     if purchase is None:
         raise ValueError(f"Purchase {purchase_id} not found")
-    # Use direct SQL deletes in FK-safe order (children before parent)
+    # Delete children before parent to satisfy FK constraints
     session.exec(sa_text("DELETE FROM installmentschedule WHERE purchase_id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]
     session.exec(sa_text("DELETE FROM purchasepayer WHERE purchase_id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]
     session.exec(sa_text("DELETE FROM purchase WHERE id = :pid").bindparams(pid=purchase_id))  # type: ignore[call-overload]

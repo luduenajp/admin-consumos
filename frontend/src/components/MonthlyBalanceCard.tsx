@@ -7,13 +7,13 @@ import { Spinner } from './Spinner'
 
 function getBalanceStatus(percentageSpent: number): { color: string; text: string } {
   if (percentageSpent >= 100) {
-    return { color: '#dc2626', text: '⚠️ Presupuesto agotado' }
+    return { color: 'var(--color-error)', text: '⚠️ Presupuesto agotado' }
   } else if (percentageSpent >= 80) {
-    return { color: '#f59e0b', text: '🟡 Cuidado, casi al límite' }
+    return { color: 'var(--color-warning)', text: '🟡 Cuidado, casi al límite' }
   } else if (percentageSpent >= 60) {
-    return { color: '#3b82f6', text: '🔵 En camino' }
+    return { color: 'var(--color-info)', text: '🔵 En camino' }
   } else {
-    return { color: '#10b981', text: '🟢 Bien encaminado' }
+    return { color: 'var(--color-success)', text: '🟢 Bien encaminado' }
   }
 }
 

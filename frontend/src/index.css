@@ -16,6 +16,8 @@
   --color-error-text: #991b1b;
   --color-error: #ef4444;
   --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
   --color-muted: #94a3b8;
 
   --radius-sm: 8px;
