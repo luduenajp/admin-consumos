@@ -65,15 +65,17 @@ No test suite configured yet. Planned: pytest + FastAPI TestClient (backend), Vi
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app factory, CORS (configurable via env), router mounting, `init_db()` on startup |
-| `api.py` | REST endpoints — CRUD for people, cards, purchases, FX rates; monthly reports; `GET /reports/month-breakdown`. POST /cards catches `ValueError` for FK validation |
-| `import_api.py` | File import endpoints (Visa XLSX, Visa/Mastercard PDF) |
-| `crud.py` | Business logic — atomic purchase creation (flush + single commit), FK existence validation, installment schedule generation, monthly report queries, `list_purchases` (person_id filter), `report_month_breakdown` (desglose de cuotas por mes) |
-| `models.py` | SQLModel ORM models (7 tables: Person, Card, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow) |
+| `api.py` | REST endpoints — full CRUD for all entities; monthly reports; categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel` |
+| `import_api.py` | File import endpoints (Visa XLSX, Visa/Mastercard PDF, Google Sheets CSV) |
+| `crud.py` | Business logic — atomic purchase creation, installment schedule generation, all report queries, `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
+| `models.py` | SQLModel ORM models (12 tables: Person, Card, Debtor, Category, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow, MonthlyBudget, Income, DebtTransfer) |
 | `schemas.py` | Pydantic schemas with `year_month` regex validation (`YYYY-MM`), `share_value > 0` constraint, and `model_validator` ensuring PERCENT payer shares sum to 100 |
 | `db.py` | SQLite engine with `PRAGMA foreign_keys=ON` enforcement, session context manager |
 | `config.py` | Environment-based configuration (DB_PATH, CORS_ORIGINS) with defaults |
+| `utils_dates.py` | Date helpers (e.g., `add_months`) |
 | `importers/visa_xlsx.py` | XLSX parser with deduplication via SHA256 fingerprints |
 | `importers/visa_pdf.py` | PDF parser (Banco Nación Visa/Mastercard, MercadoPago). Soporta contraseña. |
+| `importers/gsheets_importer.py` | Google Sheets CSV importer — downloads public sheet URL and parses rows |
 
 All API routes use prefix `/api`. Routers: `api_router` (CRUD + reports) and `import_router` (file imports).
 
@@ -91,15 +93,21 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 
 | Path | Role |
 |---|---|
-| `App.tsx` | React Router layout with 4 routes: `/`, `/purchases`, `/import`, `/admin`. Wraps routes in `ErrorBoundary` |
-| `components/ErrorBoundary.tsx` | Class component catching render errors with fallback UI |
+| `App.tsx` | React Router layout with 6 routes: `/`, `/purchases`, `/import`, `/budget`, `/categories`, `/admin`. Wraps routes in `ErrorBoundary` |
 | `api/types.ts` | TypeScript interfaces matching backend schemas (read + create payloads) |
 | `api/http.ts` | Fetch wrappers with 30s timeout (`AbortController`) + `extractErrorMessage()` utility for parsing backend error payloads |
 | `api/endpoints.ts` | API client functions for all endpoints |
 | `pages/dashboard-page.tsx` | Dashboard con selector de mes, resumen del mes (desglose de cuotas), totales mensuales, timeline de cuotas futuras, gráficos por categoría, filtro por persona |
 | `pages/purchases-page.tsx` | Listado de compras con filtros (categoría, fechas, montos, descripción, pagado por, deudor), paginación, edición inline |
-| `pages/import-page.tsx` | Importación XLSX o PDF (Banco Nación, MercadoPago). Campo de contraseña para PDF protegidos |
-| `pages/admin-page.tsx` | Entity management — create People, Cards, FX Rates (3 sections with inline forms + tables) |
+| `pages/import-page.tsx` | Importación XLSX, PDF (Banco Nación, MercadoPago) o Google Sheets CSV. Campo de contraseña para PDF protegidos |
+| `pages/budget-page.tsx` | Gestión de ingresos por persona/mes y registro de transferencias realizadas (DebtTransfer) |
+| `pages/categories-page.tsx` | ABM de categorías con nombre y color |
+| `pages/admin-page.tsx` | Entity management — create People, Cards, Debtors, FX Rates |
+| `components/TransferCalculationCard.tsx` | Muestra el resultado de `calculate_transfers` (Fondo Común) para un mes |
+| `components/MonthlyBalanceCard.tsx` | Resumen de balance mensual |
+| `components/TimelineChart.tsx` | Gráfico de timeline de cuotas futuras |
+| `components/CategoryChart.tsx` | Gráfico de gastos por categoría |
+| `components/PurchaseForm.tsx` | Formulario reutilizable para crear/editar compras |
 
 Uses React Query (`@tanstack/react-query`) with configured defaults: `staleTime: 2min`, `gcTime: 10min`, `retry: 1`, `refetchOnWindowFocus: false`.
 
@@ -128,10 +136,18 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 ## Key Domain Concepts
 
 - **Installments (cuotas)**: Purchases can have N installments. Importing parses "x de y" format. `InstallmentSchedule` entries are auto-generated on purchase creation, one per month.
+- **Purchase flags**: `is_common` marks a purchase as shared expense (Fondo Común); `is_refund` marks credit/refund; `debtor_id` links to a `Debtor` entity for third-party debt tracking; `debt_settled` marks debts as resolved. `payment_method` is `card`, `transfer`, or `cash`.
+- **Categories**: User-managed via `/categories` page (`Category` table). `auto_categorize_purchases` in `crud.py` applies keyword-based mapping from description → category.
+- **Incomes & budgets**: `Income` records per-person per-month income; `MonthlyBudget` records aggregate monthly income with notes. Used by `calculate_transfers` and displayed on the `/budget` page.
+- **DebtTransfer**: Records actual money transfers made between people for a month, so the dashboard can show "pending" vs "settled" transfer amounts.
 - **FX rates**: USD→ARS exchange rates are entered manually per month via `/admin` page. If missing for a given month, USD installments are excluded from reports (not zero — omitted).
 - **Payment split / Transferencias**: El sistema utiliza una lógica de **Fondo Común** (Core Rule). Los ingresos se suman y los gastos comunes se pagan de ese pozo. El dinero sobrante se divide 50/50 entre los participantes. Las transferencias sugeridas buscan que, después de pagar sus gastos personales correspondientes, a ambos les quede exactamente la misma cantidad de "dinero libre" del pozo común. No cambiar esta lógica a menos que se pida explícitamente una re-arquitectura financiera.
 - **Deduplication**: Import creates SHA256 fingerprints per row (`ImportedRow`). Re-importing the same file skips already-imported rows.
 - **Exclusion heuristic**: Se excluyen pagos, promos, bonificaciones, impuestos (DB.RG 5617, IIBB PERCEP, Impuesto de sellos, Impuesto al sello), "Pago de tarjeta", "Resumen de [mes]". Sí se incluyen devoluciones por compra anulada.
+
+### Importación Google Sheets
+
+`gsheets_importer.py` descarga un CSV público desde una URL de Google Sheets y parsea columnas: `fecha` (YYYY-MM-DD), `tipo`, `monto`, `moneda` (ARS/USD), `descripcion`. Las filas con `monto <= 0` se descartan. Deduplica por fingerprint SHA256 igual que XLSX.
 
 ## Adding a New Import Provider
 
