@@ -253,6 +253,8 @@ export interface TransferCalculationResponse {
     difference: number
   }>
   transferencias: Array<{ from_person: string, to_person: string, amount: number }>
+  is_balanced: boolean
+  balance_delta: number
   transferencias_internas: DebtTransfer[]
 }
 

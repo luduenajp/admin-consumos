@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import {
   fetchPeople,
+  fetchCards,
   fetchMonthBreakdown,
   fetchTimeline,
   fetchDebtReport,
@@ -36,11 +37,13 @@ function buildMonthOptions(): { value: string; label: string }[] {
 
 export function DashboardPage() {
   const [personFilter, setPersonFilter] = useState<string>('')
+  const [cardFilter, setCardFilter] = useState<string>('')
   const [monthFilter, setMonthFilter] = useState<string>(() => getCurrentYearMonth())
   const [expenseTypeFilter, setExpenseTypeFilter] = useState<string>('all')
   const [showAddForm, setShowAddForm] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const personId = personFilter ? Number(personFilter) : undefined
+  const cardId = cardFilter ? Number(cardFilter) : undefined
   const isCommon = expenseTypeFilter === 'all' ? undefined : expenseTypeFilter === 'common'
   const monthOptions = useMemo(() => buildMonthOptions(), [])
 
@@ -50,6 +53,12 @@ export function DashboardPage() {
     queryFn: fetchPeople,
   })
   const people = peopleData ?? []
+
+  const { data: cardsData } = useQuery({
+    queryKey: ['cards'],
+    queryFn: fetchCards,
+  })
+  const cards = cardsData ?? []
 
 
   const { data: timelineData, isLoading: timelineLoading } = useQuery({
@@ -63,8 +72,8 @@ export function DashboardPage() {
   })
 
   const { data: monthBreakdownData, isLoading: monthBreakdownLoading } = useQuery({
-    queryKey: ['reports', 'month-breakdown', { yearMonth: monthFilter, personId, isCommon }],
-    queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId, isCommon }),
+    queryKey: ['reports', 'month-breakdown', { yearMonth: monthFilter, personId, cardId, isCommon }],
+    queryFn: () => fetchMonthBreakdown({ yearMonth: monthFilter, personId, cardId, isCommon }),
   })
 
   const { data: categoriesData } = useQuery({
@@ -157,6 +166,25 @@ export function DashboardPage() {
             </select>
             <div className="hint">Filtro por tipo de gasto</div>
           </div>
+          {cards.length > 0 && (
+            <div className="formRow" style={{ marginBottom: 0 }}>
+              <label className="label">Tarjeta</label>
+              <select
+                className="input"
+                style={{ width: '220px' }}
+                value={cardFilter}
+                onChange={(e) => setCardFilter(e.target.value)}
+              >
+                <option value="">Todas</option>
+                {cards.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <div className="hint">Filtro por tarjeta</div>
+            </div>
+          )}
           <div style={{ marginLeft: 'auto', alignSelf: 'center', display: 'flex', gap: '12px' }}>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
@@ -237,6 +265,7 @@ export function DashboardPage() {
                       <th onClick={() => requestSort('description')} style={{ cursor: 'pointer', userSelect: 'none' }}>Descripción{getSortIcon('description')}</th>
                       <th onClick={() => requestSort('notes')} style={{ cursor: 'pointer', userSelect: 'none' }}>Detalle{getSortIcon('notes')}</th>
                       <th onClick={() => requestSort('debtor_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>Deudor{getSortIcon('debtor_name')}</th>
+                      <th onClick={() => requestSort('card_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>Tarjeta{getSortIcon('card_name')}</th>
                       <th onClick={() => requestSort('installment_index')} style={{ cursor: 'pointer', userSelect: 'none' }}>Cuota{getSortIcon('installment_index')}</th>
                       <th onClick={() => requestSort('is_common')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}>Común{getSortIcon('is_common')}</th>
                       <th onClick={() => requestSort('amount_ars')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>Monto (ARS){getSortIcon('amount_ars')}</th>
@@ -328,6 +357,7 @@ export function DashboardPage() {
                               '-'
                             )}
                           </td>
+                          <td>{row.card_name ?? '-'}</td>
                           <td>
                             {row.installment_index}/{row.installments_total}
                           </td>

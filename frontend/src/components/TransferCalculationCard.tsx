@@ -17,6 +17,16 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+function formatSignedCurrency(amount: number): string {
+  if (amount > 0) {
+    return `+ ${formatCurrency(amount)}`
+  }
+  if (amount < 0) {
+    return `- ${formatCurrency(Math.abs(amount))}`
+  }
+  return formatCurrency(0)
+}
+
 export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
   const currentMonth = yearMonth ?? getCurrentYearMonth()
 
@@ -171,6 +181,24 @@ export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : !transfers.is_balanced ? (
+            <div style={{
+              padding: '24px',
+              backgroundColor: 'rgba(245, 158, 11, 0.10)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: 'var(--radius-md)',
+              textAlign: 'center'
+            }}>
+              <div style={{ color: 'rgba(245, 158, 11, 0.95)', fontWeight: 800, fontSize: '1.05rem' }}>
+                Sin transferencias sugeridas, pero no está balanceado
+              </div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', marginTop: '6px' }}>
+                Delta de balance: {formatSignedCurrency(transfers.balance_delta)}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '8px', opacity: 0.9 }}>
+                Esto suele indicar datos incompletos o una inconsistencia en el cálculo.
+              </div>
             </div>
           ) : (
             <div style={{
