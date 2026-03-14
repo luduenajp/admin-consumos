@@ -16,6 +16,7 @@ import { extractErrorMessage } from '../api/http'
 import type { PurchaseUpdate, Category } from '../api/types'
 import { Spinner } from '../components/Spinner'
 import { PurchaseForm } from '../components/PurchaseForm'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 
 function EditableCell({
   value,
@@ -179,6 +180,9 @@ export function PurchasesPage() {
   // Manual Creation State
   const [showAddForm, setShowAddForm] = useState(false)
 
+  // Delete confirmation state
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; description: string } | null>(null)
+
   const handleReset = () => {
     setStartDate('')
     setEndDate('')
@@ -215,6 +219,7 @@ export function PurchasesPage() {
   const currentPage = data?.page ?? 1
 
   return (
+    <>
     <section className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <h2 className="pageTitle" style={{ margin: 0 }}>
@@ -481,11 +486,7 @@ export function PurchasesPage() {
                             className="button"
                             style={{ padding: '4px 8px', fontSize: '0.8rem', background: '#c0392b', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
                             disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (window.confirm(`¿Eliminar "${p.description}"? Esta acción no se puede deshacer.`)) {
-                                deleteMutation.mutate(p.id)
-                              }
-                            }}
+                            onClick={() => setPendingDelete({ id: p.id, description: p.description })}
                           >
                             🗑
                           </button>
@@ -530,6 +531,19 @@ export function PurchasesPage() {
           )
         }
       </div >
-    </section >
+    </section>
+
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      message={pendingDelete ? `¿Eliminar "${pendingDelete.description}"? Esta acción no se puede deshacer.` : ''}
+      confirmLabel="Eliminar"
+      dangerous
+      onConfirm={() => {
+        if (pendingDelete) deleteMutation.mutate(pendingDelete.id)
+        setPendingDelete(null)
+      }}
+      onCancel={() => setPendingDelete(null)}
+    />
+    </>
   )
 }

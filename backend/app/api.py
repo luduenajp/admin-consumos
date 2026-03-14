@@ -5,6 +5,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Response
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.crud import (
@@ -81,6 +82,47 @@ from app.schemas import (
 )
 
 router = APIRouter()
+
+
+def _fetch_payers(session, purchase_id: int) -> list[PurchasePayerRead]:
+    payer_rows = session.exec(
+        select(PurchasePayer, Person)
+        .join(Person, Person.id == PurchasePayer.person_id)
+        .where(PurchasePayer.purchase_id == purchase_id)
+    ).all()
+    return [
+        PurchasePayerRead(
+            person_id=int(payer.person_id),
+            person_name=person.name,
+            share_type=payer.share_type,
+            share_value=float(payer.share_value),
+        )
+        for payer, person in payer_rows
+    ]
+
+
+def _purchase_to_read(purchase, payers: list[PurchasePayerRead]) -> PurchaseRead:
+    return PurchaseRead(
+        id=purchase.id,
+        card_id=purchase.card_id,
+        payment_method=purchase.payment_method,
+        purchase_date=purchase.purchase_date,
+        description=purchase.description,
+        currency=purchase.currency,
+        amount_original=purchase.amount_original,
+        installments_total=purchase.installments_total,
+        installment_amount_original=purchase.installment_amount_original,
+        first_installment_month=purchase.first_installment_month,
+        owner_person_id=purchase.owner_person_id,
+        category=purchase.category,
+        notes=purchase.notes,
+        is_refund=purchase.is_refund,
+        is_common=purchase.is_common,
+        debtor_id=purchase.debtor_id,
+        beneficiary_person_id=purchase.beneficiary_person_id,
+        debt_settled=purchase.debt_settled,
+        payers=payers,
+    )
 
 
 @router.get("/people", response_model=list[PersonRead])
@@ -228,26 +270,7 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
         if purchase.id is None:
             raise HTTPException(status_code=500, detail="Failed to create purchase")
 
-        return PurchaseRead(
-            id=purchase.id,
-            card_id=purchase.card_id,
-            payment_method=purchase.payment_method,
-            purchase_date=purchase.purchase_date,
-            description=purchase.description,
-            currency=purchase.currency,
-            amount_original=purchase.amount_original,
-            installments_total=purchase.installments_total,
-            installment_amount_original=purchase.installment_amount_original,
-            first_installment_month=purchase.first_installment_month,
-            owner_person_id=purchase.owner_person_id,
-            category=purchase.category,
-            notes=purchase.notes,
-            is_refund=purchase.is_refund,
-            is_common=purchase.is_common,
-            debtor_id=purchase.debtor_id,
-            beneficiary_person_id=purchase.beneficiary_person_id,
-            debt_settled=purchase.debt_settled,
-        )
+        return _purchase_to_read(purchase, _fetch_payers(session, purchase.id))
 
 
 @router.delete("/purchases/{purchase_id}")
@@ -271,26 +294,7 @@ def patch_purchase(purchase_id: int, payload: PurchaseUpdate) -> PurchaseRead:
         if purchase.id is None:
             raise HTTPException(status_code=500, detail="Failed to update purchase")
 
-        return PurchaseRead(
-            id=purchase.id,
-            card_id=purchase.card_id,
-            payment_method=purchase.payment_method,
-            purchase_date=purchase.purchase_date,
-            description=purchase.description,
-            currency=purchase.currency,
-            amount_original=purchase.amount_original,
-            installments_total=purchase.installments_total,
-            installment_amount_original=purchase.installment_amount_original,
-            first_installment_month=purchase.first_installment_month,
-            owner_person_id=purchase.owner_person_id,
-            category=purchase.category,
-            notes=purchase.notes,
-            is_refund=purchase.is_refund,
-            is_common=purchase.is_common,
-            debtor_id=purchase.debtor_id,
-            beneficiary_person_id=purchase.beneficiary_person_id,
-            debt_settled=purchase.debt_settled,
-        )
+        return _purchase_to_read(purchase, _fetch_payers(session, purchase.id))
 
 
 @router.post("/purchases/bulk")
@@ -386,7 +390,7 @@ def post_category(payload: CategoryCreate) -> CategoryRead:
     with get_session() as session:
         try:
             category = create_category(session=session, payload=payload)
-        except Exception as e:
+        except (ValueError, IntegrityError) as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return CategoryRead(id=category.id, name=category.name, color=category.color)
 
@@ -543,11 +547,16 @@ def get_monthly_balance(year_month: str) -> MonthlyBalanceResponse:
 def get_incomes(year_month: Optional[str] = None) -> list[IncomeRead]:
     with get_session() as session:
         incomes = list_incomes(session=session, year_month=year_month)
+        person_ids = {inc.person_id for inc in incomes if inc.person_id is not None}
+        person_map = (
+            {p.id: p for p in session.exec(select(Person).where(Person.id.in_(person_ids))).all()}
+            if person_ids else {}
+        )
         return [
             IncomeRead(
                 id=inc.id,
                 person_id=inc.person_id,
-                person_name=session.get(Person, inc.person_id).name if inc.person_id else "Desconocido",
+                person_name=(lambda p: p.name if p else "Desconocido")(person_map.get(inc.person_id)),
                 year_month=inc.year_month,
                 amount=float(inc.amount),
                 notes=inc.notes
@@ -602,24 +611,25 @@ def get_transfer_calculation(year_month: str) -> TransferCalculationResponse:
 def get_debt_transfers(year_month: Optional[str] = None) -> list[DebtTransferRead]:
     with get_session() as session:
         transfers = list_debt_transfers(session=session, year_month=year_month)
-        out = []
-        for t in transfers:
-            from_p = session.get(Person, t.from_person_id)
-            to_p = session.get(Person, t.to_person_id)
-            out.append(
-                DebtTransferRead(
-                    id=t.id,
-                    from_person_id=t.from_person_id,
-                    from_person_name=from_p.name if from_p else "Desconocido",
-                    to_person_id=t.to_person_id,
-                    to_person_name=to_p.name if to_p else "Desconocido",
-                    year_month=t.year_month,
-                    amount=float(t.amount),
-                    transfer_date=t.transfer_date,
-                    notes=t.notes
-                )
+        person_ids = {t.from_person_id for t in transfers} | {t.to_person_id for t in transfers}
+        person_map = (
+            {p.id: p for p in session.exec(select(Person).where(Person.id.in_(person_ids))).all()}
+            if person_ids else {}
+        )
+        return [
+            DebtTransferRead(
+                id=t.id,
+                from_person_id=t.from_person_id,
+                from_person_name=(lambda p: p.name if p else "Desconocido")(person_map.get(t.from_person_id)),
+                to_person_id=t.to_person_id,
+                to_person_name=(lambda p: p.name if p else "Desconocido")(person_map.get(t.to_person_id)),
+                year_month=t.year_month,
+                amount=float(t.amount),
+                transfer_date=t.transfer_date,
+                notes=t.notes
             )
-        return out
+            for t in transfers
+        ]
 
 
 @router.post("/debt-transfers", response_model=DebtTransferRead)

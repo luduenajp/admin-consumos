@@ -17,11 +17,7 @@ import { CategoryChart } from '../components/CategoryChart'
 import { MonthlyBalanceCard } from '../components/MonthlyBalanceCard'
 import { TransferCalculationCard } from '../components/TransferCalculationCard'
 import { PurchaseForm } from '../components/PurchaseForm'
-
-function getCurrentYearMonth(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
+import { getCurrentYearMonth } from '../utils/dates'
 
 function buildMonthOptions(): { value: string; label: string }[] {
   const now = new Date()
@@ -198,7 +194,7 @@ export function DashboardPage() {
                 window.location.href = `/api/reports/export-excel?year_month=${monthFilter}`
               }}
               className="button"
-              style={{ background: '#27ae60', color: 'white', borderColor: '#2ecc71', fontWeight: 600 }}
+              style={{ background: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)', fontWeight: 600 }}
             >
               📊 Exportar Excel
             </button>

@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Admin Consumos is a local-only web app for managing credit card expenses with installment tracking. It supports importing bank statements (Visa XLSX, PDF de resúmenes), splitting payments between people, filtering by who paid, and generating monthly reports with USD→ARS conversion. No authentication — single-user household tool.
 
+## Specification Document
+
+`SPEC.md` (project root) is the formal software specification. It catalogs every use case (UC-XXX), business rule (BR-XXX), data model, API endpoint, validation rule, and data integrity invariant.
+
+**Regla obligatoria para nuevas features:**
+1. **Antes de implementar**, leer SPEC.md y validar que la feature propuesta no entre en conflicto con casos de uso (UC-XXX), reglas de negocio (BR-XXX) o invariantes ya definidos.
+2. Si hay conflicto, informar al usuario antes de proceder.
+3. **Después de implementar**, actualizar SPEC.md agregando los nuevos UC, BR, endpoints, o modelos que correspondan, manteniendo la numeración y formato existente.
+
 ## Development Commands
 
 ### Arranque rápido (recomendado)
@@ -65,9 +74,9 @@ No test suite configured yet. Planned: pytest + FastAPI TestClient (backend), Vi
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app factory, CORS (configurable via env), router mounting, `init_db()` on startup |
-| `api.py` | REST endpoints — full CRUD for all entities; monthly reports; categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel` |
+| `api.py` | REST endpoints — full CRUD for all entities; monthly reports (`GET /reports/month-breakdown`); categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel`. `POST /cards` y `POST /purchases` capturan `ValueError` para FK validation (HTTP 400) |
 | `import_api.py` | File import endpoints (Visa XLSX, Visa/Mastercard PDF, Google Sheets CSV) |
-| `crud.py` | Business logic — atomic purchase creation, installment schedule generation, all report queries, `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
+| `crud.py` | Business logic — atomic purchase creation (flush + single commit), FK existence validation, installment schedule generation, all report queries (`list_purchases` con person_id filter, `report_month_breakdown` desglose de cuotas por mes), `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
 | `models.py` | SQLModel ORM models (12 tables: Person, Card, Debtor, Category, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow, MonthlyBudget, Income, DebtTransfer) |
 | `schemas.py` | Pydantic schemas with `year_month` regex validation (`YYYY-MM`), `share_value > 0` constraint, and `model_validator` ensuring PERCENT payer shares sum to 100 |
 | `db.py` | SQLite engine with `PRAGMA foreign_keys=ON` enforcement, session context manager |
@@ -108,6 +117,7 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 | `components/TimelineChart.tsx` | Gráfico de timeline de cuotas futuras |
 | `components/CategoryChart.tsx` | Gráfico de gastos por categoría |
 | `components/PurchaseForm.tsx` | Formulario reutilizable para crear/editar compras |
+| `components/ConfirmDialog.tsx` | Modal de confirmación reutilizable para acciones destructivas |
 
 Uses React Query (`@tanstack/react-query`) with configured defaults: `staleTime: 2min`, `gcTime: 10min`, `retry: 1`, `refetchOnWindowFocus: false`.
 
@@ -132,6 +142,9 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 - **FK enforcement**: SQLite `PRAGMA foreign_keys=ON` enabled via SQLAlchemy event listener in `db.py`
 - **FK validation**: `create_card` and `create_purchase` validate that referenced Person/Card IDs exist before creating, raising `ValueError` (caught as HTTP 400)
 - **Input validation**: `year_month` fields use regex `^\d{4}-(0[1-9]|1[0-2])$`; payer `share_value` must be `> 0`; PERCENT shares must sum to 100 (model_validator)
+- **Global error handlers** in `main.py`: `IntegrityError` → 409, `ValueError` → 400
+- **DB migrations**: `db.py:_migrate_add_columns()` runs on startup to add columns (`debtor_id`, `debt_settled`, `beneficiary_person_id`) to existing databases. Idempotent via `PRAGMA table_info` check.
+- **Manual cascade delete**: `delete_purchase` uses raw SQL to delete children (installments, payers) before parent, because SQLModel doesn't emit `ON DELETE CASCADE` DDL. If new child tables are added, their DELETE must go here too.
 
 ## Key Domain Concepts
 
@@ -149,6 +162,14 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 
 `gsheets_importer.py` descarga un CSV público desde una URL de Google Sheets y parsea columnas: `fecha` (YYYY-MM-DD), `tipo`, `monto`, `moneda` (ARS/USD), `descripcion`. Las filas con `monto <= 0` se descartan. Deduplica por fingerprint SHA256 igual que XLSX.
 
+### Import Installment Matching
+
+`_process_installment_row` in `import_api.py` handles re-import of installment rows. It uses `find_existing_purchase_for_installment_import` in `crud.py` with two-pass matching:
+1. **Exact match**: normalized description + amount (±0.01 or ±1%)
+2. **Fuzzy match**: if exactly ONE candidate matches by date/card/currency/amount (ignoring description), it's returned — supports manually renamed purchases.
+
+If an existing purchase is found, only the missing `InstallmentSchedule` entry is added (no duplicate purchase created).
+
 ## Adding a New Import Provider
 
 1. Create `backend/app/importers/<provider>.py` implementing `parse_<provider>(path) -> list[ParsedPurchaseRow]` (o extender `visa_pdf.py` con nuevo formato)
@@ -163,18 +184,28 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 ## Core Financial Logic (Fondo Común)
 
 Esta es la regla inamovible para el cálculo de transferencias en `crud.py -> calculate_transfers`:
-1. `Sobrante Base` = (Total Ingresos - Total Gastos Comunes) / 2
+1. `Sobrante Base` = (Total Ingresos - Total Gastos Comunes) / N (N = personas con ingreso en el mes)
 2. `Target Cash Persona A` = Sobrante Base - Gastos Personales Persona A
 3. `Lo que Persona A debe pagar` = Ingreso Persona A - Target Cash Persona A
 4. `Transferencia` = Lo que Persona A pagó de su bolsillo - Lo que Persona A debe pagar
+5. `Ajuste` = DebtTransfers enviados - DebtTransfers recibidos (por persona/mes)
+6. `Diferencia final` = (Pagó - Debe pagar) + Ajuste
 
-El objetivo final es que a ambos les quede el mismo sobrante base después de gastos comunes, ajustado por sus consumos personales.
+El objetivo final es que a todos les quede el mismo sobrante base después de gastos comunes, ajustado por sus consumos personales. Ver SPEC.md BR-001 para la fórmula completa.
 
 ## Adding New Reports
 
 1. Add query logic in `backend/app/crud.py`
 2. Expose endpoint in `backend/app/api.py`
 3. Consume from a page component in `frontend/src/pages/`
+
+## Backend Patterns to Follow
+
+- **Upsert pattern**: `upsert_fx_rate` and `create_monthly_budget` check for existing records by logical key before creating. Follow this pattern for new entities with natural uniqueness.
+- **Income → Budget sync**: Creating an `Income` auto-recalculates `MonthlyBudget.total_income` for that month via `_update_monthly_budget_from_incomes`. Any new income-like entity should follow this pattern.
+- **Category cascade**: Renaming a category cascades to all `Purchase.category` values. Deleting nullifies them. See SPEC.md BR-009, BR-010.
+- **FX conversion at query time**: `amount_ars` on `InstallmentSchedule` is always `None`. All ARS conversion happens in report queries using `_fx_rate_map()`. Don't pre-compute `amount_ars`.
+- **Person filter allocation**: When filtering reports by `person_id`, amounts are proportionally allocated via `PurchasePayer` shares using `_allocate_amount_to_person`. Don't filter by simple equality.
 
 ## Frontend Patterns to Follow
 

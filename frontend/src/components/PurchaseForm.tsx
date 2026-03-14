@@ -9,16 +9,11 @@ import {
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category } from '../api/types'
+import { getRelativeMonth } from '../utils/dates'
 
 interface PurchaseFormProps {
     onSuccess?: () => void
     onCancel?: () => void
-}
-
-function getRelativeMonth(offset: number): string {
-    const d = new Date()
-    d.setMonth(d.getMonth() + offset)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {

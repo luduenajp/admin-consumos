@@ -1,31 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchMonthlyBalance } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
+import { formatCurrency } from '../utils/format'
+import { getCurrentYearMonth } from '../utils/dates'
 import { Spinner } from './Spinner'
-
-function getCurrentYearMonth(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-  }).format(amount)
-}
 
 function getBalanceStatus(percentageSpent: number): { color: string; text: string } {
   if (percentageSpent >= 100) {
-    return { color: '#dc2626', text: '⚠️ Presupuesto agotado' }
+    return { color: 'var(--color-error)', text: '⚠️ Presupuesto agotado' }
   } else if (percentageSpent >= 80) {
-    return { color: '#f59e0b', text: '🟡 Cuidado, casi al límite' }
+    return { color: 'var(--color-warning)', text: '🟡 Cuidado, casi al límite' }
   } else if (percentageSpent >= 60) {
-    return { color: '#3b82f6', text: '🔵 En camino' }
+    return { color: 'var(--color-info)', text: '🔵 En camino' }
   } else {
-    return { color: '#10b981', text: '🟢 Bien encaminado' }
+    return { color: 'var(--color-success)', text: '🟢 Bien encaminado' }
   }
 }
 

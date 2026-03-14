@@ -283,12 +283,33 @@ class DebtTransferRead(BaseModel):
     notes: Optional[str]
 
 
+class IngresoItem(BaseModel):
+    person_id: int
+    person_name: str
+    amount: float
+
+
+class GastoPersonaItem(BaseModel):
+    person_id: int
+    person_name: str
+    paid_amount: float
+    should_pay: float
+    adjustment: float
+    difference: float
+
+
+class TransferenciaItem(BaseModel):
+    from_person: str
+    to_person: str
+    amount: float
+
+
 class TransferCalculationResponse(BaseModel):
     year_month: str
-    ingresos: list[dict]  # [{person_id, person_name, amount}]
+    ingresos: list[IngresoItem]
     total_ingresos: float
-    gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
-    transferencias: list[dict]  # [{from_person, to_person, amount}]
+    gastos_por_persona: list[GastoPersonaItem]
+    transferencias: list[TransferenciaItem]
     is_balanced: bool
     balance_delta: float
     transferencias_internas: list[DebtTransferRead] = Field(default_factory=list)
