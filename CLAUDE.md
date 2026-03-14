@@ -8,7 +8,12 @@ Admin Consumos is a local-only web app for managing credit card expenses with in
 
 ## Specification Document
 
-`SPEC.md` (project root) is the formal software specification. It catalogs every use case (UC-XXX), business rule (BR-XXX), data model, API endpoint, validation rule, and data integrity invariant. **Consult SPEC.md before modifying business logic** to understand the full impact and avoid regressions. Keep SPEC.md in sync when adding/changing features.
+`SPEC.md` (project root) is the formal software specification. It catalogs every use case (UC-XXX), business rule (BR-XXX), data model, API endpoint, validation rule, and data integrity invariant.
+
+**Regla obligatoria para nuevas features:**
+1. **Antes de implementar**, leer SPEC.md y validar que la feature propuesta no entre en conflicto con casos de uso (UC-XXX), reglas de negocio (BR-XXX) o invariantes ya definidos.
+2. Si hay conflicto, informar al usuario antes de proceder.
+3. **Después de implementar**, actualizar SPEC.md agregando los nuevos UC, BR, endpoints, o modelos que correspondan, manteniendo la numeración y formato existente.
 
 ## Development Commands
 
