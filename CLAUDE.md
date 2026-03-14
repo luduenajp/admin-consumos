@@ -65,9 +65,9 @@ No test suite configured yet. Planned: pytest + FastAPI TestClient (backend), Vi
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app factory, CORS (configurable via env), router mounting, `init_db()` on startup |
-| `api.py` | REST endpoints — full CRUD for all entities; monthly reports; categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel` |
+| `api.py` | REST endpoints — full CRUD for all entities; monthly reports (`GET /reports/month-breakdown`); categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel`. `POST /cards` y `POST /purchases` capturan `ValueError` para FK validation (HTTP 400) |
 | `import_api.py` | File import endpoints (Visa XLSX, Visa/Mastercard PDF, Google Sheets CSV) |
-| `crud.py` | Business logic — atomic purchase creation, installment schedule generation, all report queries, `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
+| `crud.py` | Business logic — atomic purchase creation (flush + single commit), FK existence validation, installment schedule generation, all report queries (`list_purchases` con person_id filter, `report_month_breakdown` desglose de cuotas por mes), `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
 | `models.py` | SQLModel ORM models (12 tables: Person, Card, Debtor, Category, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow, MonthlyBudget, Income, DebtTransfer) |
 | `schemas.py` | Pydantic schemas with `year_month` regex validation (`YYYY-MM`), `share_value > 0` constraint, and `model_validator` ensuring PERCENT payer shares sum to 100 |
 | `db.py` | SQLite engine with `PRAGMA foreign_keys=ON` enforcement, session context manager |

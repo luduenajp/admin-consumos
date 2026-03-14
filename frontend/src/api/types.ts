@@ -211,19 +211,6 @@ export interface MonthlyBalanceResponse {
   porcentaje_gastado: number
 }
 
-export interface MonthlyBudget {
-  id: number
-  year_month: string
-  total_income: number
-  notes?: string | null
-}
-
-export interface MonthlyBudgetCreate {
-  year_month: string
-  total_income: number
-  notes?: string | null
-}
-
 export interface Income {
   id: number
   person_id: number

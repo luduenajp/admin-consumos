@@ -1,21 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchTransferCalculation } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
+import { formatCurrency } from '../utils/format'
+import { getCurrentYearMonth } from '../utils/dates'
 import { Spinner } from './Spinner'
-
-function getCurrentYearMonth(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-  }).format(amount)
-}
 
 function formatSignedCurrency(amount: number): string {
   if (amount > 0) {
