@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adminconsumos.startup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/pablo/github/admin-consumos/start_prod.sh</string>
+  </array>
+
+  <!-- Arrancar automaticamente al iniciar sesion -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Reintentar si falla al arrancar -->
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/pablo/Library/Logs/admin-consumos/startup.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/pablo/Library/Logs/admin-consumos/startup.log</string>
+
+  <!-- Esperar 5 segundos antes de arrancar (para que la red esté disponible) -->
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>

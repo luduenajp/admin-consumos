@@ -12,6 +12,7 @@ data/*.db
 data/*.db.backup.*
 resumenes/
 examples/
+backups/
 *.pdf
 *.xlsx
 *.xls

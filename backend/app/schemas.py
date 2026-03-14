@@ -289,6 +289,8 @@ class TransferCalculationResponse(BaseModel):
     total_ingresos: float
     gastos_por_persona: list[dict]  # [{person_id, person_name, paid_amount, should_pay, difference}]
     transferencias: list[dict]  # [{from_person, to_person, amount}]
+    is_balanced: bool
+    balance_delta: float
     transferencias_internas: list[DebtTransferRead] = Field(default_factory=list)
 
 class BulkPurchaseUpdate(BaseModel):
