@@ -147,9 +147,9 @@ export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
               {transfers.transferencias.map((transfer, index) => (
                 <div key={index} style={{
                   padding: '20px',
-                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  background: 'linear-gradient(135deg, var(--color-success), #059669)',
                   borderRadius: 'var(--radius-md)',
-                  color: '#fff',
+                  color: 'white',
                   boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
                   display: 'flex',
                   justifyContent: 'space-between',

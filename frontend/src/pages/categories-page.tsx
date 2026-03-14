@@ -6,6 +6,7 @@ import {
     deleteCategory,
 } from '../api/endpoints'
 import type { Category, CategoryCreate } from '../api/types'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 
 export function CategoriesPage() {
     const [categories, setCategories] = useState<Category[]>([])
@@ -13,6 +14,7 @@ export function CategoriesPage() {
     const [newCategory, setNewCategory] = useState<CategoryCreate>({ name: '', color: '#3b82f6' })
     const [editingId, setEditingId] = useState<number | null>(null)
     const [editForm, setEditForm] = useState<Partial<Category>>({})
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
 
     useEffect(() => {
         loadCategories()
@@ -36,7 +38,6 @@ export function CategoriesPage() {
     }
 
     async function handleDelete(id: number) {
-        if (!confirm('¿Estás seguro? Las compras con esta categoría volverán a "Sin categoría"')) return
         await deleteCategory(id)
         await loadCategories()
     }
@@ -49,6 +50,7 @@ export function CategoriesPage() {
     }
 
     return (
+        <>
         <div className="page">
             <div className="panel">
                 <div className="panelTitle">Administrar Categorías</div>
@@ -147,7 +149,7 @@ export function CategoriesPage() {
                                                 >
                                                     Editar
                                                 </button>
-                                                <button className="button sm danger" onClick={() => handleDelete(cat.id)}>Eliminar</button>
+                                                <button className="button sm danger" onClick={() => setPendingDeleteId(cat.id)}>Eliminar</button>
                                             </div>
                                         )}
                                     </td>
@@ -165,5 +167,18 @@ export function CategoriesPage() {
                 )}
             </div>
         </div>
+
+        <ConfirmDialog
+            open={pendingDeleteId !== null}
+            message='¿Estás seguro? Las compras con esta categoría volverán a "Sin categoría"'
+            confirmLabel="Eliminar"
+            dangerous
+            onConfirm={() => {
+                if (pendingDeleteId !== null) handleDelete(pendingDeleteId)
+                setPendingDeleteId(null)
+            }}
+            onCancel={() => setPendingDeleteId(null)}
+        />
+        </>
     )
 }
