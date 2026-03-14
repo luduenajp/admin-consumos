@@ -11,25 +11,13 @@ import {
 import { extractErrorMessage } from '../api/http'
 import type { IncomeCreate, DebtTransferCreate } from '../api/types'
 import { Spinner } from '../components/Spinner'
-
-function getCurrentYearMonth(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
+import { formatCurrency } from '../utils/format'
+import { getCurrentYearMonth } from '../utils/dates'
 
 function formatYearMonth(yearMonth: string): string {
   const [year, month] = yearMonth.split('-')
   const date = new Date(parseInt(year), parseInt(month) - 1)
   return date.toLocaleDateString('es-AR', { year: 'numeric', month: 'long' })
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-  }).format(amount)
 }
 
 export function BudgetPage() {

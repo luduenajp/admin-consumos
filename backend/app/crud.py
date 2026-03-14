@@ -501,13 +501,22 @@ def _create_installment_schedule(*, session: Session, purchase: Purchase) -> Non
         )
 
 
-def report_monthly_totals_ars(*, session: Session) -> list[tuple[str, float]]:
-    raise NotImplementedError("Use report_monthly_totals_converted")
-
-
 def _fx_rate_map(*, session: Session) -> dict[tuple[str, CurrencyCode], float]:
     rates = list_fx_rates(session=session)
     return {(r.year_month, r.currency): float(r.rate_to_ars) for r in rates if r.id is not None}
+
+
+def _allocate_amount_to_person(*, amount_ars: float, payers: list[PurchasePayer], person_id: int) -> float:
+    """Allocate an installment amount to a specific person based on their payer shares."""
+    allocated = 0.0
+    for payer in payers:
+        if payer.person_id != person_id:
+            continue
+        if payer.share_type == ShareType.PERCENT:
+            allocated += amount_ars * (float(payer.share_value) / 100.0)
+        else:
+            allocated += float(payer.share_value)
+    return allocated
 
 
 def report_monthly_totals_converted(
@@ -543,16 +552,9 @@ def report_monthly_totals_converted(
             amount_ars = amount_original * float(rate)
 
         if person_id is not None:
-            payers = payer_map.get(sch.purchase_id, [])
-            allocated = 0.0
-            for payer in payers:
-                if payer.person_id != person_id:
-                    continue
-                if payer.share_type == ShareType.PERCENT:
-                    allocated += amount_ars * (float(payer.share_value) / 100.0)
-                else:
-                    allocated += float(payer.share_value)
-            amount_ars = allocated
+            amount_ars = _allocate_amount_to_person(
+                amount_ars=amount_ars, payers=payer_map.get(sch.purchase_id, []), person_id=person_id
+            )
 
         totals[sch.year_month] = float(totals.get(sch.year_month, 0.0) + amount_ars)
 
@@ -630,15 +632,9 @@ def report_month_breakdown(
                     amount_ars = 0.0
                 # else: amount_ars remains the same (100%)
             else:
-                allocated = 0.0
-                for payer in payers:
-                    if payer.person_id != person_id:
-                        continue
-                    if payer.share_type == ShareType.PERCENT:
-                        allocated += amount_ars * (float(payer.share_value) / 100.0)
-                    else:
-                        allocated += float(payer.share_value)
-                amount_ars = allocated
+                amount_ars = _allocate_amount_to_person(
+                    amount_ars=amount_ars, payers=payers, person_id=person_id
+                )
 
             if amount_ars == 0:
                 continue
@@ -710,16 +706,9 @@ def report_spending_by_category(
 
         # Apply person filter
         if person_id is not None:
-            payers = payer_map.get(sch.purchase_id, [])
-            allocated = 0.0
-            for payer in payers:
-                if payer.person_id != person_id:
-                    continue
-                if payer.share_type == ShareType.PERCENT:
-                    allocated += amount_ars * (float(payer.share_value) / 100.0)
-                else:
-                    allocated += float(payer.share_value)
-            amount_ars = allocated
+            amount_ars = _allocate_amount_to_person(
+                amount_ars=amount_ars, payers=payer_map.get(sch.purchase_id, []), person_id=person_id
+            )
 
         totals[cat_key] = float(totals.get(cat_key, 0.0) + amount_ars)
 
@@ -783,16 +772,9 @@ def report_installment_timeline(
 
         # Apply person filter allocation
         if person_id is not None:
-            payers = payer_map.get(sch.purchase_id, [])
-            allocated = 0.0
-            for payer in payers:
-                if payer.person_id != person_id:
-                    continue
-                if payer.share_type == ShareType.PERCENT:
-                    allocated += amount_ars * (float(payer.share_value) / 100.0)
-                else:
-                    allocated += float(payer.share_value)
-            amount_ars = allocated
+            amount_ars = _allocate_amount_to_person(
+                amount_ars=amount_ars, payers=payer_map.get(sch.purchase_id, []), person_id=person_id
+            )
 
         totals[sch.year_month] = float(totals.get(sch.year_month, 0.0) + amount_ars)
 
@@ -1104,8 +1086,10 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             if expense_owner_pid is not None:
                 personal_expenses_by_person_id[expense_owner_pid] += inst_amt
 
-    num_total_people = session.exec(select(func.count(Person.id))).one()
     all_people = session.exec(select(Person)).all()
+    # Use only people with income for this month for the Common Pool split.
+    # Counting all people would include inactive/test people not participating in the pool.
+    num_total_people = len(set(inc["person_id"] for inc in ingresos)) or 1
     
     # Ensure all people are in the dictionaries
     for p in all_people:
