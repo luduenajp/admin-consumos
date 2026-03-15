@@ -63,7 +63,25 @@ See `.env.example` for reference.
 
 ### Testing
 
-No test suite configured yet. Planned: pytest + FastAPI TestClient (backend), Vitest + React Testing Library (frontend).
+```bash
+# Backend (desde backend/)
+source ../.venv/bin/activate
+python -m pytest tests/ -q
+
+# Frontend (desde frontend/)
+npm run test:run
+```
+
+**Regla obligatoria:** Los tests deben correrse y pasar completamente antes de considerar cualquier cambio o feature como terminado. Un desarrollo está completo cuando:
+1. `python -m pytest tests/ -q` → todos los tests pasan (0 failed)
+2. `npm run test:run` → todos los tests pasan (0 failed)
+3. `npm run build` → TypeScript compila sin errores
+
+**Regla para tests que fallan tras un cambio:** Si un cambio rompe un test existente, NO modificar el test automáticamente. Primero consultar al usuario explicando:
+- Qué test falló y por qué
+- Si el fallo indica un bug en el código nuevo (fix el código) o si el comportamiento cambió intencionalmente (ahí sí actualizar el test con aprobación)
+
+**Regla para nuevas features:** Al agregar una feature, agregar también los tests correspondientes. Si la feature toca lógica de negocio existente (BR-XXX en SPEC.md), agregar o extender los tests en `test_spec_business_rules.py`.
 
 ## Architecture
 
