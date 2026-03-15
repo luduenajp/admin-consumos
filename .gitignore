@@ -8,7 +8,7 @@ dist/
 Thumbs.db
 
 # Private Data (CRITICAL: DO NOT COMMIT)
-data/*.db
+*.db
 data/*.db.backup.*
 resumenes/
 examples/
