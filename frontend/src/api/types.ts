@@ -231,6 +231,8 @@ export interface TransferCalculationResponse {
   year_month: string
   ingresos: Array<{ person_id: number, person_name: string, amount: number }>
   total_ingresos: number
+  total_common_expenses: number
+  total_personal_expenses: number
   gastos_por_persona: Array<{
     person_id: number
     person_name: string
@@ -270,4 +272,15 @@ export interface GSheetsImportRequest {
   url: string
   owner_person_id: number
   is_common: boolean
+}
+
+export interface RecurringExpenseRow {
+  description: string
+  category: string | null
+  currency: string
+  occurrences: number
+  total_purchases: number
+  avg_amount: number
+  months: string[]
+  last_seen: string
 }

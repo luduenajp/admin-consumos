@@ -21,6 +21,7 @@ from app.crud import (
     create_person,
     create_category,
     delete_category,
+    detect_recurring_expenses,
     update_category,
     list_categories,
     create_debt_transfer,
@@ -79,6 +80,7 @@ from app.schemas import (
     DebtTransferCreate,
     DebtTransferRead,
     TransferCalculationResponse,
+    RecurringExpenseRow,
 )
 
 router = APIRouter()
@@ -662,3 +664,11 @@ def delete_debt_transfer_endpoint(transfer_id: int) -> Response:
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
     return Response(status_code=204)
+
+
+@router.get("/reports/recurring-expenses", response_model=list[RecurringExpenseRow])
+def get_recurring_expenses(min_occurrences: int = 3) -> list[RecurringExpenseRow]:
+    """Detect recurring expenses based on normalized description matching."""
+    with get_session() as session:
+        rows = detect_recurring_expenses(session=session, min_occurrences=min_occurrences)
+        return [RecurringExpenseRow(**row) for row in rows]

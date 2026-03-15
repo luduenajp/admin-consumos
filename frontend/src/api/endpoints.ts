@@ -257,3 +257,7 @@ export function createDebtTransfer(payload: DebtTransferCreate): Promise<DebtTra
 export function deleteDebtTransfer(id: number): Promise<void> {
   return deleteHttp(`/api/debt-transfers/${id}`)
 }
+
+export function fetchRecurringExpenses(minOccurrences: number = 3): Promise<import('./types').RecurringExpenseRow[]> {
+  return getJson<import('./types').RecurringExpenseRow[]>(`/api/reports/recurring-expenses?min_occurrences=${minOccurrences}`)
+}

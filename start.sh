@@ -42,6 +42,10 @@ if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
   npm install --prefix "$ROOT_DIR/frontend"
 fi
 
+# --- DB de desarrollo (separada de producción) ---
+export DB_PATH="$ROOT_DIR/data/test.db"
+echo -e "${YELLOW}Usando DB de desarrollo: $DB_PATH${NC}"
+
 # --- Start backend ---
 echo -e "${GREEN}Iniciando backend (http://localhost:8000) ...${NC}"
 cd "$ROOT_DIR/backend"

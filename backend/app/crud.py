@@ -1081,18 +1081,21 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
     # 3. Should Pay = Income - Target Cash
     
     total_common_expenses = 0.0
+    total_unassigned_personal = 0.0
     personal_expenses_by_person_id = defaultdict(float)
 
     for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid, beneficiary_pid in schedule_rows:
         inst_amt = float(amount_ars or 0.0)
         actual_payer_pid = owner_pid if owner_pid is not None else card_owner_pid
-        
+
         if is_common:
             total_common_expenses += inst_amt
         else:
             expense_owner_pid = beneficiary_pid if beneficiary_pid is not None else actual_payer_pid
             if expense_owner_pid is not None:
                 personal_expenses_by_person_id[expense_owner_pid] += inst_amt
+            else:
+                total_unassigned_personal += inst_amt
 
     all_people = session.exec(select(Person)).all()
     # Use only people with income for this month for the Common Pool split.
@@ -1213,10 +1216,13 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
                 })
                 remaining_to_receive -= transfer_amount
     
+    total_personal = sum(personal_expenses_by_person_id.values()) + total_unassigned_personal
     return {
         "year_month": year_month,
         "ingresos": ingresos,
         "total_ingresos": total_ingresos,
+        "total_common_expenses": round(total_common_expenses, 2),
+        "total_personal_expenses": round(total_personal, 2),
         "gastos_por_persona": gastos_por_persona,
         "transferencias": transferencias,
         "is_balanced": is_balanced,
@@ -1359,6 +1365,59 @@ def auto_categorize_purchases(*, session: Session) -> int:
     
     if count > 0:
         session.commit()
-    
+
     return count
+
+
+def detect_recurring_expenses(
+    *, session: Session, min_occurrences: int = 3
+) -> list[dict]:
+    """
+    Detect recurring expenses: distinct purchases with the same normalized
+    description appearing in min_occurrences or more different months.
+    Returns list of dicts with description, occurrences count, months list,
+    average amount, and category.
+    """
+    purchases = list(
+        session.exec(
+            select(Purchase).order_by(Purchase.purchase_date.desc())
+        )
+    )
+
+    from collections import defaultdict
+
+    # Group by normalized description
+    groups: dict[str, list[Purchase]] = defaultdict(list)
+    for p in purchases:
+        key = normalize_purchase_description(description=p.description)
+        groups[key].append(p)
+
+    results: list[dict] = []
+    for norm_desc, group in groups.items():
+        # Count distinct months (by purchase_date, not installments)
+        distinct_months = set()
+        for p in group:
+            distinct_months.add(to_year_month(p.purchase_date))
+
+        if len(distinct_months) < min_occurrences:
+            continue
+
+        # Use original description from most recent purchase
+        latest = group[0]
+        avg_amount = sum(p.amount_original for p in group) / len(group)
+        months_sorted = sorted(distinct_months, reverse=True)
+
+        results.append({
+            "description": latest.description,
+            "category": latest.category,
+            "currency": latest.currency.value,
+            "occurrences": len(distinct_months),
+            "total_purchases": len(group),
+            "avg_amount": round(avg_amount, 2),
+            "months": months_sorted,
+            "last_seen": months_sorted[0],
+        })
+
+    results.sort(key=lambda x: x["occurrences"], reverse=True)
+    return results
 

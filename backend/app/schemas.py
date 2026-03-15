@@ -308,6 +308,8 @@ class TransferCalculationResponse(BaseModel):
     year_month: str
     ingresos: list[IngresoItem]
     total_ingresos: float
+    total_common_expenses: float = 0.0
+    total_personal_expenses: float = 0.0
     gastos_por_persona: list[GastoPersonaItem]
     transferencias: list[TransferenciaItem]
     is_balanced: bool
@@ -317,3 +319,14 @@ class TransferCalculationResponse(BaseModel):
 class BulkPurchaseUpdate(BaseModel):
     purchase_ids: list[int]
     update: PurchaseUpdate
+
+
+class RecurringExpenseRow(BaseModel):
+    description: str
+    category: Optional[str] = None
+    currency: str
+    occurrences: int
+    total_purchases: int
+    avg_amount: float
+    months: list[str]
+    last_seen: str

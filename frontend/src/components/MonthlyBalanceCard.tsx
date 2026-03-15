@@ -5,18 +5,6 @@ import { formatCurrency } from '../utils/format'
 import { getCurrentYearMonth } from '../utils/dates'
 import { Spinner } from './Spinner'
 
-function getBalanceStatus(percentageSpent: number): { color: string; text: string } {
-  if (percentageSpent >= 100) {
-    return { color: 'var(--color-error)', text: '⚠️ Presupuesto agotado' }
-  } else if (percentageSpent >= 80) {
-    return { color: 'var(--color-warning)', text: '🟡 Cuidado, casi al límite' }
-  } else if (percentageSpent >= 60) {
-    return { color: 'var(--color-info)', text: '🔵 En camino' }
-  } else {
-    return { color: 'var(--color-success)', text: '🟢 Bien encaminado' }
-  }
-}
-
 export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
   const currentMonth = yearMonth ?? getCurrentYearMonth()
 
@@ -44,7 +32,7 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
           {extractErrorMessage(error)}
         </div>
         <p className="hint" style={{ marginTop: '16px' }}>
-          Configurá un presupuesto para ver el balance mensual
+          Configura un presupuesto para ver el balance mensual
         </p>
       </div>
     )
@@ -61,58 +49,17 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
     )
   }
 
-  const status = getBalanceStatus(balance.porcentaje_gastado)
-
   return (
     <div className="panel">
       <h2 className="panelTitle">Balance del Mes</h2>
 
       <div style={{ paddingTop: '8px' }}>
-        {/* Barra de progreso */}
-        <div style={{ marginBottom: '32px' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            marginBottom: '12px'
-          }}>
-            <span style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--color-text)' }}>
-              {balance.porcentaje_gastado.toFixed(1)}% <span style={{ fontWeight: 400, fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>del presupuesto</span>
-            </span>
-            <span style={{
-              fontSize: '0.85rem',
-              color: status.color,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: '0.02em'
-            }}>
-              {status.text}
-            </span>
-          </div>
-
-          <div style={{
-            width: '100%',
-            height: '10px',
-            backgroundColor: 'var(--color-primary-light)',
-            borderRadius: '10px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${Math.min(balance.porcentaje_gastado, 100)}%`,
-              height: '100%',
-              background: `linear-gradient(90deg, ${status.color}, ${status.color}dd)`,
-              borderRadius: '10px',
-              transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
-            }} />
-          </div>
-        </div>
-
-        {/* Métricas principales */}
+        {/* Metricas principales */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: '24px',
-          marginBottom: '32px'
+          marginBottom: '24px'
         }}>
           <div>
             <div className="label" style={{ marginBottom: '4px' }}>Presupuesto</div>
@@ -140,12 +87,12 @@ export function MonthlyBalanceCard({ yearMonth }: { yearMonth?: string }) {
           textAlign: 'center'
         }}>
           <div style={{
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             marginBottom: '8px',
             fontWeight: '600',
             color: 'var(--color-text-secondary)'
           }}>
-            💰 Sobrante para cada uno
+            Sobrante para cada uno
           </div>
           <div style={{
             fontSize: '2rem',

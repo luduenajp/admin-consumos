@@ -40,6 +40,10 @@ if [ ! -d "$ROOT_DIR/frontend/dist" ]; then
   exit 1
 fi
 
+# --- DB de producción ---
+export DB_PATH="$ROOT_DIR/data/app.db"
+echo "[admin-consumos] Usando DB de producción: $DB_PATH"
+
 # --- Iniciar backend ---
 echo "[admin-consumos] Iniciando backend en http://localhost:$BACKEND_PORT ..."
 cd "$ROOT_DIR/backend"
