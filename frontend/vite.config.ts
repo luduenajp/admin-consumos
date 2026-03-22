@@ -17,6 +17,7 @@ export default defineConfig({
     },
   },
   preview: {
+    host: true, // escuchar en 0.0.0.0 para aceptar conexiones externas
     // Producción local: proxy al backend en el puerto configurado
     proxy: {
       '/api': {

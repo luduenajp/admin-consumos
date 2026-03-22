@@ -25,4 +25,4 @@ def get_cors_origins() -> list[str]:
     env_origins = os.environ.get("CORS_ORIGINS")
     if env_origins:
         return [o.strip() for o in env_origins.split(",")]
-    return ["http://localhost:5173", "http://localhost:4173", "http://192.168.68.105:4173"]
+    return ["http://localhost:5173", "http://localhost:4173", "http://192.168.68.105:4173", "http://www.consumofamiliar.com:4173"]
