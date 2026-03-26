@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Backend (FastAPI/uvicorn)",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "/Users/pablo/github/admin-consumos/frontend/node_modules/.bin/vite",
+      "runtimeArgs": ["/Users/pablo/github/admin-consumos/frontend"],
+      "port": 5173
+    }
+  ]
+}

@@ -27,6 +27,9 @@ import type {
   TransferCalculationResponse,
   DebtTransfer,
   DebtTransferCreate,
+  FamilyGoal,
+  FamilyGoalCreate,
+  FamilyGoalUpdate,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -260,4 +263,20 @@ export function deleteDebtTransfer(id: number): Promise<void> {
 
 export function fetchRecurringExpenses(minOccurrences: number = 3): Promise<import('./types').RecurringExpenseRow[]> {
   return getJson<import('./types').RecurringExpenseRow[]>(`/api/reports/recurring-expenses?min_occurrences=${minOccurrences}`)
+}
+
+export function fetchGoals(): Promise<FamilyGoal[]> {
+  return getJson<FamilyGoal[]>('/api/goals')
+}
+
+export function createGoal(payload: FamilyGoalCreate): Promise<FamilyGoal> {
+  return postJson<FamilyGoal>('/api/goals', payload)
+}
+
+export function updateGoal(id: number, payload: FamilyGoalUpdate): Promise<FamilyGoal> {
+  return patchJson<FamilyGoal>(`/api/goals/${id}`, payload)
+}
+
+export function deleteGoal(id: number): Promise<void> {
+  return deleteHttp(`/api/goals/${id}`)
 }

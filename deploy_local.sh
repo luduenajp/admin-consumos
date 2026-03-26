@@ -7,6 +7,13 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
+# En worktrees, el venv puede vivir en el proyecto principal
+if [ ! -d "$VENV_DIR" ]; then
+  MAIN_PROJECT_VENV="$(dirname "$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")/.venv"
+  if [ -d "$MAIN_PROJECT_VENV" ]; then
+    VENV_DIR="$MAIN_PROJECT_VENV"
+  fi
+fi
 
 echo ""
 echo "🚀 Deploy local de admin-consumos"

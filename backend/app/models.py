@@ -132,3 +132,14 @@ class DebtTransfer(SQLModel, table=True):
     amount: float
     transfer_date: date = Field(default_factory=date.today)
     notes: Optional[str] = None
+
+
+class FamilyGoal(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    description: Optional[str] = None
+    target_amount: Optional[float] = None  # presupuesto estimado en ARS
+    due_date: Optional[str] = None  # YYYY-MM
+    is_completed: bool = Field(default=False)
+    notes: Optional[str] = None
+    priority: Optional[str] = None  # "low", "medium", "high"

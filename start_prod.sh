@@ -7,6 +7,13 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
+# En worktrees, el venv puede vivir en el proyecto principal (3 niveles arriba)
+if [ ! -d "$VENV_DIR" ]; then
+  MAIN_PROJECT_VENV="$(dirname "$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")/.venv"
+  if [ -d "$MAIN_PROJECT_VENV" ]; then
+    VENV_DIR="$MAIN_PROJECT_VENV"
+  fi
+fi
 LOG_DIR="$HOME/Library/Logs/admin-consumos"
 BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
@@ -34,14 +41,17 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 source "$VENV_DIR/bin/activate"
 
-# --- Verificar que el frontend esté buildeado ---
+# --- Build del frontend si no existe ---
 if [ ! -d "$ROOT_DIR/frontend/dist" ]; then
-  echo "[admin-consumos] No se encontró el build del frontend. Corré deploy_local.sh primero."
-  exit 1
+  echo "[admin-consumos] No se encontró el build del frontend. Buildeando..."
+  cd "$ROOT_DIR/frontend"
+  [ ! -d node_modules ] && npm install --silent
+  npm run build
 fi
 
-# --- DB de producción ---
-export DB_PATH="$ROOT_DIR/data/app.db"
+# --- DB de producción (siempre del proyecto principal, no del worktree) ---
+MAIN_PROJECT_ROOT="$(dirname "$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")"
+export DB_PATH="$MAIN_PROJECT_ROOT/data/app.db"
 echo "[admin-consumos] Usando DB de producción: $DB_PATH"
 
 # --- Iniciar backend ---
@@ -51,10 +61,20 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
   >> "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
+# --- Esperar que el backend esté listo ---
+echo "[admin-consumos] Esperando que el backend esté listo..."
+for i in $(seq 1 20); do
+  if curl -sf "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
+    echo "[admin-consumos] Backend listo."
+    break
+  fi
+  sleep 1
+done
+
 # --- Iniciar frontend (vite preview) ---
 echo "[admin-consumos] Iniciando frontend en http://localhost:$FRONTEND_PORT ..."
 cd "$ROOT_DIR/frontend"
-nohup env BACKEND_PORT=$BACKEND_PORT npx vite preview --port "$FRONTEND_PORT" --host 0.0.0.0 \
+nohup env BACKEND_PORT=$BACKEND_PORT /usr/local/bin/npx vite preview --port "$FRONTEND_PORT" --host 0.0.0.0 \
   >> "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
