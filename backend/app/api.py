@@ -130,6 +130,7 @@ def _purchase_to_read(purchase, payers: list[PurchasePayerRead]) -> PurchaseRead
         debtor_id=purchase.debtor_id,
         beneficiary_person_id=purchase.beneficiary_person_id,
         debt_settled=purchase.debt_settled,
+        import_batch_id=purchase.import_batch_id,
         payers=payers,
     )
 
@@ -195,6 +196,7 @@ def get_purchases(
     max_amount: Optional[float] = None,
     description_search: Optional[str] = None,
     person_id: Optional[int] = None,
+    import_batch_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> PaginatedResponse[PurchaseRead]:
@@ -209,6 +211,7 @@ def get_purchases(
             max_amount=max_amount,
             description_search=description_search,
             person_id=person_id,
+            import_batch_id=import_batch_id,
             page=page,
             page_size=page_size,
         )
@@ -255,6 +258,7 @@ def get_purchases(
                     debtor_id=p.debtor_id,
                     beneficiary_person_id=p.beneficiary_person_id,
                     debt_settled=p.debt_settled,
+                    import_batch_id=p.import_batch_id,
                     payers=payers_by_purchase_id.get(int(p.id), []),
                 )
             )

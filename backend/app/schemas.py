@@ -116,7 +116,21 @@ class PurchaseRead(BaseModel):
     debtor_id: Optional[int]
     beneficiary_person_id: Optional[int]
     debt_settled: bool
+    import_batch_id: Optional[int] = None
     payers: list[PurchasePayerRead] = Field(default_factory=list)
+
+
+class ImportBatchRead(BaseModel):
+    id: int
+    imported_at: str
+    provider: str
+    source_file: str
+    card_id: Optional[int] = None
+    card_name: Optional[str] = None
+    statement_year_month: Optional[str] = None
+    purchases_created: int
+    purchases_skipped: int
+    purchases_parsed: int
 
 
 class ReportMonthlyRow(BaseModel):

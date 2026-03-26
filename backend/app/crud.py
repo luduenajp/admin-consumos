@@ -17,6 +17,7 @@ from app.models import (
     Income,
     InstallmentSchedule,
     MonthlyBudget,
+    ImportBatch,
     Person,
     Purchase,
     PurchasePayer,
@@ -351,6 +352,11 @@ def export_dashboard_to_excel(*, session: Session, year_month: str) -> bytes:
     return output.getvalue()
 
 
+def list_import_batches(*, session: Session) -> list[ImportBatch]:
+    stmt = select(ImportBatch).order_by(ImportBatch.imported_at.desc())
+    return list(session.exec(stmt).all())
+
+
 def list_purchases(
     *,
     session: Session,
@@ -362,6 +368,7 @@ def list_purchases(
     max_amount: Optional[float] = None,
     description_search: Optional[str] = None,
     person_id: Optional[int] = None,
+    import_batch_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[Purchase], int]:
@@ -422,6 +429,10 @@ def list_purchases(
     # Description search (case-insensitive)
     if description_search:
         stmt = stmt.where(col(Purchase.description).contains(description_search))
+
+    # Import batch filter
+    if import_batch_id is not None:
+        stmt = stmt.where(Purchase.import_batch_id == import_batch_id)
 
     total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     stmt = (
@@ -894,19 +905,20 @@ def calculate_monthly_balance(*, session: Session, year_month: str) -> Optional[
     if not budget:
         return None
     
-    # Get total expenses for the month (sum of all installments)
-    # If amount_ars is NULL but currency is ARS, fall back to amount_original.
-    # If currency is USD and amount_ars is NULL, we exclude it (requires FX).
-    amount_ars_or_ars_original = case(
-        (InstallmentSchedule.amount_ars.is_not(None), InstallmentSchedule.amount_ars),
-        (InstallmentSchedule.currency == CurrencyCode.ARS, InstallmentSchedule.amount_original),
-        else_=None,
-    )
-    expenses_query = (
-        select(func.sum(amount_ars_or_ars_original))
+    # Get total expenses for the month using FX conversion (same logic as report_month_breakdown)
+    fx_map = _fx_rate_map(session=session)
+    schedule_rows_balance = session.exec(
+        select(InstallmentSchedule.amount_original, InstallmentSchedule.currency)
         .where(InstallmentSchedule.year_month == year_month)
-    )
-    total_expenses = float(session.exec(expenses_query).first() or 0.0)
+    ).all()
+    total_expenses = 0.0
+    for amount_original, currency in schedule_rows_balance:
+        if currency == CurrencyCode.ARS:
+            total_expenses += float(amount_original)
+        else:
+            rate = fx_map.get((year_month, currency))
+            if rate is not None:
+                total_expenses += float(amount_original) * float(rate)
     
     # Calculate surplus
     surplus_total = budget.total_income - total_expenses
@@ -1005,27 +1017,19 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
     ]
     
     total_ingresos = sum(inc["amount"] for inc in ingresos)
-    
-    # Get total shared expenses for the month
-    amount_ars_or_ars_original = case(
-        (InstallmentSchedule.amount_ars.is_not(None), InstallmentSchedule.amount_ars),
-        (InstallmentSchedule.currency == CurrencyCode.ARS, InstallmentSchedule.amount_original),
-        else_=None,
-    )
-    expenses_query = (
-        select(func.sum(amount_ars_or_ars_original))
-        .where(InstallmentSchedule.year_month == year_month)
-    )
-    total_expenses = float(session.exec(expenses_query).first() or 0.0)
+
+    # Build FX rate map for USD→ARS conversion (same as report_month_breakdown)
+    fx_map = _fx_rate_map(session=session)
 
     # Compute paid amounts per person for this month.
     # Rule:
     # - If Purchase has PurchasePayer rows, allocate the installment amount using those shares.
     # - Otherwise, allocate 100% to purchase.owner_person_id (default behavior).
-    schedule_rows = session.exec(
+    schedule_rows_raw = session.exec(
         select(
             InstallmentSchedule.purchase_id,
-            amount_ars_or_ars_original,
+            InstallmentSchedule.amount_original,
+            InstallmentSchedule.currency,
             Purchase.owner_person_id,
             Purchase.card_id,
             Purchase.is_common,
@@ -1036,6 +1040,20 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
         .outerjoin(Card, Card.id == Purchase.card_id)
         .where(InstallmentSchedule.year_month == year_month)
     ).all()
+
+    # Convert each row's amount to ARS using fx_map; skip rows with no FX rate
+    schedule_rows = []
+    for pid, amount_original, currency, owner_pid, card_id, is_common, card_owner_pid, beneficiary_pid in schedule_rows_raw:
+        if currency == CurrencyCode.ARS:
+            amount_ars = float(amount_original)
+        else:
+            rate = fx_map.get((year_month, currency))
+            if rate is None:
+                continue
+            amount_ars = float(amount_original) * float(rate)
+        schedule_rows.append((pid, amount_ars, owner_pid, card_id, is_common, card_owner_pid, beneficiary_pid))
+
+    total_expenses = sum(row[1] for row in schedule_rows)
 
     from collections import defaultdict
     paid_amount_by_person_id = defaultdict(float)

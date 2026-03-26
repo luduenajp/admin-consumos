@@ -10,6 +10,7 @@ import type {
   DebtSummaryRow,
   FxRate,
   GSheetsImportRequest,
+  ImportBatch,
   ImportResult,
   Income,
   IncomeCreate,
@@ -62,6 +63,7 @@ export function fetchPurchases(filters?: {
   maxAmount?: number
   descriptionSearch?: string
   personId?: number
+  importBatchId?: number
   page?: number
   pageSize?: number
 }): Promise<PaginatedResponse<Purchase>> {
@@ -74,10 +76,15 @@ export function fetchPurchases(filters?: {
   if (filters?.maxAmount !== undefined) qs.set('max_amount', String(filters.maxAmount))
   if (filters?.descriptionSearch) qs.set('description_search', filters.descriptionSearch)
   if (filters?.personId !== undefined) qs.set('person_id', String(filters.personId))
+  if (filters?.importBatchId !== undefined) qs.set('import_batch_id', String(filters.importBatchId))
   if (filters?.page !== undefined) qs.set('page', String(filters.page))
   if (filters?.pageSize !== undefined) qs.set('page_size', String(filters.pageSize))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
   return getJson<PaginatedResponse<Purchase>>(`/api/purchases${suffix}`)
+}
+
+export function fetchImportBatches(): Promise<ImportBatch[]> {
+  return getJson<ImportBatch[]>('/api/import/batches')
 }
 
 export function createPurchase(payload: PurchaseCreate): Promise<Purchase> {

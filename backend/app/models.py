@@ -80,6 +80,7 @@ class Purchase(SQLModel, table=True):
 
     debtor_id: Optional[int] = Field(default=None, foreign_key="debtor.id", index=True)
     debt_settled: bool = Field(default=False)
+    import_batch_id: Optional[int] = Field(default=None, foreign_key="importbatch.id", index=True)
 
 
 class PurchasePayer(SQLModel, table=True):
@@ -98,6 +99,18 @@ class InstallmentSchedule(SQLModel, table=True):
     currency: CurrencyCode
     amount_original: float
     amount_ars: Optional[float] = None
+
+
+class ImportBatch(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    imported_at: str  # ISO-8601 datetime
+    provider: str = Field(index=True)
+    source_file: str
+    card_id: Optional[int] = Field(default=None, foreign_key="card.id")
+    statement_year_month: Optional[str] = None  # YYYY-MM
+    purchases_created: int = Field(default=0)
+    purchases_skipped: int = Field(default=0)
+    purchases_parsed: int = Field(default=0)
 
 
 class ImportedRow(SQLModel, table=True):

@@ -313,6 +313,16 @@ export function ImportPage() {
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)' }}>{importMutation.data.parsed}</div>
               </div>
             </div>
+            {importMutation.data.batch_id != null && (
+              <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                <a
+                  href={`/purchases?batch=${importMutation.data.batch_id}`}
+                  style={{ fontWeight: 600, color: 'var(--color-primary)' }}
+                >
+                  Ver compras importadas →
+                </a>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

@@ -37,6 +37,9 @@ def _migrate_add_columns() -> None:
             conn.execute(text("ALTER TABLE purchase ADD COLUMN debt_settled BOOLEAN DEFAULT 0 NOT NULL"))
         if "beneficiary_person_id" not in columns:
             conn.execute(text("ALTER TABLE purchase ADD COLUMN beneficiary_person_id INTEGER REFERENCES person(id)"))
+        if "import_batch_id" not in columns:
+            conn.execute(text("ALTER TABLE purchase ADD COLUMN import_batch_id INTEGER REFERENCES importbatch(id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_import_batch_id ON purchase(import_batch_id)"))
         conn.commit()
 
 

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from sqlmodel import select
 
-from app.crud import create_purchase, find_existing_purchase_for_installment_import
+from app.crud import create_purchase, find_existing_purchase_for_installment_import, list_import_batches
 from app.db import get_session
-from app.models import CurrencyCode, PaymentMethod
-from app.schemas import GSheetsImportRequest, PurchaseCreate
+from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
+from app.schemas import GSheetsImportRequest, ImportBatchRead, PurchaseCreate
 from app.importers.gsheets_importer import download_gsheets_csv, parse_gsheets_csv
 from app.importers.visa_pdf import parse_visa_pdf
 from app.importers.visa_xlsx import (
@@ -43,6 +45,7 @@ def _process_installment_row(
     filename: str,
     is_common: bool,
     claimed_ids: list[int],
+    import_batch_id: int | None = None,
 ) -> bool:
     """
     Process a single parsed installment row: check dedup, create/update purchase, mark imported.
@@ -85,14 +88,16 @@ def _process_installment_row(
             is_common=is_common,
             payers=None,
         )
-        create_purchase(session=session, payload=payload)
+        purchase = create_purchase(session=session, payload=payload)
+        if import_batch_id is not None:
+            purchase.import_batch_id = import_batch_id
     else:
         if existing.id is not None:
             claimed_ids.append(existing.id)
             if not _has_installment_schedule(
                 session=session,
                 purchase_id=existing.id,
-                year_month=r.statement_year_month,
+                year_month=payment_month,
                 installment_index=r.installment_index,
             ):
                 from app.models import InstallmentSchedule
@@ -100,7 +105,7 @@ def _process_installment_row(
                 session.add(
                     InstallmentSchedule(
                         purchase_id=existing.id,
-                        year_month=r.statement_year_month,
+                        year_month=payment_month,
                         installment_index=r.installment_index,
                         currency=CurrencyCode(r.currency),
                         amount_original=r.installment_amount,
@@ -156,16 +161,33 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default
     claimed_ids: list[int] = []
 
     with get_session() as session:
+        batch = ImportBatch(
+            imported_at=datetime.now().isoformat(),
+            provider=provider,
+            source_file=file.filename,
+            card_id=card_id,
+            statement_year_month=rows[0].statement_year_month if rows else None,
+        )
+        session.add(batch)
+        session.flush()
+
         for r in rows:
             if _process_installment_row(
                 session=session, r=r, card_id=card_id, provider=provider,
                 filename=file.filename, is_common=is_common, claimed_ids=claimed_ids,
+                import_batch_id=batch.id,
             ):
                 created += 1
             else:
                 skipped += 1
 
-    return {"created": created, "skipped": skipped, "parsed": len(rows)}
+        batch.purchases_created = created
+        batch.purchases_skipped = skipped
+        batch.purchases_parsed = len(rows)
+        session.commit()
+        batch_id = batch.id
+
+    return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
 
 
 @router.post("/import/visa-pdf")
@@ -199,16 +221,33 @@ def import_visa_pdf_endpoint(
     claimed_ids: list[int] = []
 
     with get_session() as session:
+        batch = ImportBatch(
+            imported_at=datetime.now().isoformat(),
+            provider=provider,
+            source_file=file.filename,
+            card_id=card_id,
+            statement_year_month=rows[0].statement_year_month if rows else None,
+        )
+        session.add(batch)
+        session.flush()
+
         for r in rows:
             if _process_installment_row(
                 session=session, r=r, card_id=card_id, provider=provider,
                 filename=file.filename, is_common=is_common, claimed_ids=claimed_ids,
+                import_batch_id=batch.id,
             ):
                 created += 1
             else:
                 skipped += 1
 
-    return {"created": created, "skipped": skipped, "parsed": len(rows)}
+        batch.purchases_created = created
+        batch.purchases_skipped = skipped
+        batch.purchases_parsed = len(rows)
+        session.commit()
+        batch_id = batch.id
+
+    return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
 
 
 @router.post("/import/gsheets")
@@ -226,6 +265,16 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
     provider = "gsheets"
 
     with get_session() as session:
+        batch = ImportBatch(
+            imported_at=datetime.now().isoformat(),
+            provider=provider,
+            source_file=payload.url[:100],
+            card_id=None,
+            statement_year_month=rows[0].statement_year_month if rows else None,
+        )
+        session.add(batch)
+        session.flush()
+
         for r in rows:
             # For GSheets/Transfers, we use the same deduplication logic
             fingerprint = compute_row_fingerprint(provider=provider, card_id=None, row=r)
@@ -250,7 +299,8 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
                 is_common=payload.is_common,
                 payers=None,
             )
-            create_purchase(session=session, payload=purchase_payload)
+            purchase = create_purchase(session=session, payload=purchase_payload)
+            purchase.import_batch_id = batch.id
 
             mark_imported(
                 session=session,
@@ -268,4 +318,36 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
             session.commit()
             created += 1
 
-    return {"created": created, "skipped": skipped, "parsed": len(rows)}
+        batch.purchases_created = created
+        batch.purchases_skipped = skipped
+        batch.purchases_parsed = len(rows)
+        session.commit()
+        batch_id = batch.id
+
+    return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
+
+
+@router.get("/import/batches", response_model=list[ImportBatchRead])
+def get_import_batches() -> list[ImportBatchRead]:
+    with get_session() as session:
+        batches = list_import_batches(session=session)
+        card_ids = {b.card_id for b in batches if b.card_id is not None}
+        card_map: dict[int, str] = {}
+        if card_ids:
+            cards = session.exec(select(Card).where(Card.id.in_(card_ids))).all()
+            card_map = {c.id: c.name for c in cards if c.id is not None}
+        return [
+            ImportBatchRead(
+                id=b.id,  # type: ignore[arg-type]
+                imported_at=b.imported_at,
+                provider=b.provider,
+                source_file=b.source_file,
+                card_id=b.card_id,
+                card_name=card_map.get(b.card_id) if b.card_id is not None else None,
+                statement_year_month=b.statement_year_month,
+                purchases_created=b.purchases_created,
+                purchases_skipped=b.purchases_skipped,
+                purchases_parsed=b.purchases_parsed,
+            )
+            for b in batches
+        ]

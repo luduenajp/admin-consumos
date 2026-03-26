@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import {
@@ -10,7 +11,8 @@ import {
   deletePurchase,
   bulkUpdatePurchases,
   fetchCategories,
-  autoCategorizePurchases
+  autoCategorizePurchases,
+  fetchImportBatches,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { PurchaseUpdate, Category } from '../api/types'
@@ -73,6 +75,8 @@ function EditableCell({
 const PAGE_SIZE = 50
 
 export function PurchasesPage() {
+  const [searchParams] = useSearchParams()
+
   // Filter state
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
@@ -82,6 +86,7 @@ export function PurchasesPage() {
   const [debtorFilter, setDebtorFilter] = useState<string>('')
   const [personFilter, setPersonFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
+  const [batchFilter, setBatchFilter] = useState<string>(searchParams.get('batch') ?? '')
   const [page, setPage] = useState(1)
 
   const queryClient = useQueryClient()
@@ -95,6 +100,7 @@ export function PurchasesPage() {
     descriptionSearch: descriptionSearch || undefined,
     personId: personFilter ? Number(personFilter) : undefined,
     category: categoryFilter || undefined,
+    importBatchId: batchFilter ? Number(batchFilter) : undefined,
     page,
     pageSize: PAGE_SIZE,
   }
@@ -134,6 +140,11 @@ export function PurchasesPage() {
   const { data: cardsData } = useQuery({
     queryKey: ['cards'],
     queryFn: fetchCards,
+  })
+
+  const { data: batchesData } = useQuery({
+    queryKey: ['import-batches'],
+    queryFn: fetchImportBatches,
   })
 
   const debtors = debtorsData ?? []
@@ -192,6 +203,7 @@ export function PurchasesPage() {
     setDebtorFilter('')
     setPersonFilter('')
     setCategoryFilter('')
+    setBatchFilter('')
     setPage(1)
   }
 
@@ -275,6 +287,17 @@ export function PurchasesPage() {
               <option value="null">Sin categoría</option>
               {categoriesData?.map((c) => (
                 <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="formRow" style={{ marginBottom: 0 }}>
+            <label className="label">Importación</label>
+            <select className="input" style={{ width: '220px' }} value={batchFilter} onChange={(e) => { setBatchFilter(e.target.value); setPage(1); }}>
+              <option value="">Todas</option>
+              {batchesData?.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.source_file} ({b.imported_at.slice(0, 10)}) — {b.purchases_created} creadas
+                </option>
               ))}
             </select>
           </div>

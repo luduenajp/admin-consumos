@@ -48,6 +48,7 @@ export interface Purchase {
   debtor_id?: number | null
   beneficiary_person_id?: number | null
   debt_settled: boolean
+  import_batch_id?: number | null
   payers: PurchasePayer[]
 }
 
@@ -94,6 +95,20 @@ export interface ImportResult {
   created: number
   skipped: number
   parsed: number
+  batch_id?: number
+}
+
+export interface ImportBatch {
+  id: number
+  imported_at: string
+  provider: string
+  source_file: string
+  card_id?: number | null
+  card_name?: string | null
+  statement_year_month?: string | null
+  purchases_created: number
+  purchases_skipped: number
+  purchases_parsed: number
 }
 
 export interface PersonCreate {
