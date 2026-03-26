@@ -27,6 +27,10 @@ from app.crud import (
     create_debt_transfer,
     delete_debt_transfer,
     list_debt_transfers,
+    create_family_goal,
+    list_family_goals,
+    update_family_goal,
+    delete_family_goal,
     export_dashboard_to_excel,
     get_distinct_categories,
     get_monthly_budget,
@@ -81,6 +85,9 @@ from app.schemas import (
     DebtTransferRead,
     TransferCalculationResponse,
     RecurringExpenseRow,
+    FamilyGoalCreate,
+    FamilyGoalUpdate,
+    FamilyGoalRead,
 )
 
 router = APIRouter()
@@ -672,3 +679,39 @@ def get_recurring_expenses(min_occurrences: int = 3) -> list[RecurringExpenseRow
     with get_session() as session:
         rows = detect_recurring_expenses(session=session, min_occurrences=min_occurrences)
         return [RecurringExpenseRow(**row) for row in rows]
+
+
+# --- Family Goals ---
+
+@router.get("/goals", response_model=list[FamilyGoalRead])
+def get_goals() -> list[FamilyGoalRead]:
+    with get_session() as session:
+        goals = list_family_goals(session=session)
+        return [FamilyGoalRead(**g.model_dump()) for g in goals]
+
+
+@router.post("/goals", response_model=FamilyGoalRead, status_code=201)
+def post_goal(payload: FamilyGoalCreate) -> FamilyGoalRead:
+    with get_session() as session:
+        goal = create_family_goal(session=session, payload=payload)
+        return FamilyGoalRead(**goal.model_dump())
+
+
+@router.patch("/goals/{goal_id}", response_model=FamilyGoalRead)
+def patch_goal(goal_id: int, payload: FamilyGoalUpdate) -> FamilyGoalRead:
+    with get_session() as session:
+        try:
+            goal = update_family_goal(session=session, goal_id=goal_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return FamilyGoalRead(**goal.model_dump())
+
+
+@router.delete("/goals/{goal_id}")
+def delete_goal_endpoint(goal_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_family_goal(session=session, goal_id=goal_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return Response(status_code=204)

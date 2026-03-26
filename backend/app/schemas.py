@@ -330,3 +330,34 @@ class RecurringExpenseRow(BaseModel):
     avg_amount: float
     months: list[str]
     last_seen: str
+
+
+class FamilyGoalCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    target_amount: Optional[float] = None
+    due_date: Optional[str] = None  # YYYY-MM
+    notes: Optional[str] = None
+    priority: Optional[str] = None  # "low", "medium", "high"
+
+
+class FamilyGoalUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    target_amount: Optional[float] = None
+    due_date: Optional[str] = None
+    is_completed: Optional[bool] = None
+    notes: Optional[str] = None
+    priority: Optional[str] = None
+
+
+class FamilyGoalRead(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    target_amount: Optional[float] = None
+    due_date: Optional[str] = None
+    is_completed: bool
+    notes: Optional[str] = None
+    priority: Optional[str] = None
+

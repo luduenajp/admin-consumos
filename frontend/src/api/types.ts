@@ -284,3 +284,33 @@ export interface RecurringExpenseRow {
   months: string[]
   last_seen: string
 }
+
+export interface FamilyGoal {
+  id: number
+  title: string
+  description?: string | null
+  target_amount?: number | null
+  due_date?: string | null
+  is_completed: boolean
+  notes?: string | null
+  priority?: string | null
+}
+
+export interface FamilyGoalCreate {
+  title: string
+  description?: string | null
+  target_amount?: number | null
+  due_date?: string | null
+  notes?: string | null
+  priority?: string | null
+}
+
+export interface FamilyGoalUpdate {
+  title?: string | null
+  description?: string | null
+  target_amount?: number | null
+  due_date?: string | null
+  is_completed?: boolean | null
+  notes?: string | null
+  priority?: string | null
+}

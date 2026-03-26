@@ -22,17 +22,20 @@ from app.models import (
     PurchasePayer,
     ShareType,
     DebtTransfer,
+    FamilyGoal,
 )
 from app.schemas import (
-    CardCreate, 
-    CategoryCreate, 
-    CategoryUpdate, 
-    DebtorCreate, 
-    FxRateUpsert, 
-    IncomeCreate, 
-    MonthlyBudgetCreate, 
-    PersonCreate, 
-    PurchaseCreate, 
+    CardCreate,
+    CategoryCreate,
+    CategoryUpdate,
+    DebtorCreate,
+    FamilyGoalCreate,
+    FamilyGoalUpdate,
+    FxRateUpsert,
+    IncomeCreate,
+    MonthlyBudgetCreate,
+    PersonCreate,
+    PurchaseCreate,
     PurchaseUpdate
 )
 from app.utils_dates import add_months, to_year_month
@@ -1421,3 +1424,41 @@ def detect_recurring_expenses(
     results.sort(key=lambda x: x["occurrences"], reverse=True)
     return results
 
+
+
+# --- FamilyGoal CRUD ---
+
+def create_family_goal(*, session: Session, payload: FamilyGoalCreate) -> FamilyGoal:
+    goal = FamilyGoal(**payload.model_dump())
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
+
+
+def list_family_goals(*, session: Session) -> list[FamilyGoal]:
+    stmt = select(FamilyGoal).order_by(
+        col(FamilyGoal.is_completed).asc(),
+        col(FamilyGoal.id).asc(),
+    )
+    return list(session.exec(stmt).all())
+
+
+def update_family_goal(*, session: Session, goal_id: int, payload: FamilyGoalUpdate) -> FamilyGoal:
+    goal = session.get(FamilyGoal, goal_id)
+    if goal is None:
+        raise ValueError(f"FamilyGoal {goal_id} not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(goal, field, value)
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
+
+
+def delete_family_goal(*, session: Session, goal_id: int) -> None:
+    goal = session.get(FamilyGoal, goal_id)
+    if goal is None:
+        raise ValueError(f"FamilyGoal {goal_id} not found")
+    session.delete(goal)
+    session.commit()

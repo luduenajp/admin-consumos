@@ -9,8 +9,13 @@
     },
     {
       "name": "Frontend (Vite)",
+<<<<<<< HEAD
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
+=======
+      "runtimeExecutable": "/Users/pablo/github/admin-consumos/frontend/node_modules/.bin/vite",
+      "runtimeArgs": ["/Users/pablo/github/admin-consumos/frontend"],
+>>>>>>> 29edf8f8fb35fc334d6bf85833ca09916fd4b13b
       "port": 5173
     }
   ]
