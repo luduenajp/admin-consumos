@@ -352,6 +352,53 @@ def export_dashboard_to_excel(*, session: Session, year_month: str) -> bytes:
     return output.getvalue()
 
 
+def find_card_by_holder(
+    *, session: Session, holder_name: str, last4: Optional[str] = None
+) -> Optional[Card]:
+    """
+    Busca la Card más probable dado el nombre del titular extraído del resumen.
+
+    Normaliza los nombres quitando acentos y comparando en minúsculas.
+    Retorna la Card si hay exactamente 1 coincidencia; None si hay 0 o más de 1 (ambiguo).
+    """
+    import unicodedata
+
+    def _normalize(s: str) -> str:
+        s = unicodedata.normalize("NFD", s.lower())
+        return "".join(c for c in s if unicodedata.category(c) != "Mn").strip()
+
+    holder_norm = _normalize(holder_name)
+    holder_words = set(holder_norm.split())
+
+    persons = list(session.exec(select(Person)).all())
+    cards = list(session.exec(select(Card)).all())
+
+    person_map = {p.id: p for p in persons if p.id is not None}
+
+    matched: list[Card] = []
+    for card in cards:
+        person = person_map.get(card.owner_person_id)
+        if person is None:
+            continue
+        person_norm = _normalize(person.name)
+        person_words = set(person_norm.split())
+
+        # Match si alguna palabra del nombre de la persona aparece en el titular del resumen
+        if not person_words.intersection(holder_words):
+            continue
+
+        # Si hay last4 disponible en ambos lados, usarlo para desempatar o confirmar
+        if last4 and card.last4:
+            if card.last4 != last4:
+                continue  # last4 no coincide: descartar
+
+        matched.append(card)
+
+    if len(matched) == 1:
+        return matched[0]
+    return None
+
+
 def list_import_batches(*, session: Session) -> list[ImportBatch]:
     stmt = select(ImportBatch).order_by(ImportBatch.imported_at.desc())
     return list(session.exec(stmt).all())

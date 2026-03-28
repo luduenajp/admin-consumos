@@ -143,7 +143,10 @@ def _is_excluded_description(description: str) -> bool:
         return True
     # Excluir impuestos (DB.RG 5617, IIBB PERCEP, IMPUESTO DE SELLOS)
     # No excluir devoluciones por compra anulada
-    tax_patterns = ("db.rg 5617", "iibb percep", "impuesto de sellos", "impuesto de sello", "impuesto al sello")
+    tax_patterns = (
+        "db.rg 5617", "iibb percep", "impuesto de sellos", "impuesto de sello", "impuesto al sello",
+        "iva rg 4240", "db iva $", "intereses financiacion",
+    )
     return any(p in d for p in tax_patterns)
 
 
@@ -159,6 +162,83 @@ def _detect_statement_year_month(df_raw: pd.DataFrame) -> Optional[str]:
                 if d is not None:
                     return f"{d.year:04d}-{d.month:02d}"
     return None
+
+
+def extract_holder_hint_xlsx(
+    path: Path,
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """
+    Extrae (holder_name, last4, card_type, bank) del encabezado de un XLSX de resumen.
+    Retorna (None, None, None, None) si no se puede detectar.
+    """
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except Exception:
+        return None, None, None, None
+
+    holder_name: Optional[str] = None
+    last4: Optional[str] = None
+    card_type: Optional[str] = None
+    bank: Optional[str] = None
+
+    # last4 del nombre del sheet (ej: "Visa 5623")
+    sheet_name = wb.sheetnames[0] if wb.sheetnames else ""
+    m = re.search(r"(\d{4})$", sheet_name.strip())
+    if m:
+        last4 = m.group(1)
+
+    # card_type desde el nombre del sheet
+    if re.search(r"\bVisa\b", sheet_name, re.IGNORECASE):
+        card_type = "Visa"
+    elif re.search(r"\bMastercard\b", sheet_name, re.IGNORECASE):
+        card_type = "Mastercard"
+
+    ws = wb.worksheets[0]
+    for row in ws.iter_rows(max_row=20, values_only=True):
+        for cell in row:
+            if cell is None:
+                continue
+            val = str(cell).strip()
+            if not val or val.lower() == "none":
+                continue
+
+            # "terminada en 5623" → last4
+            if last4 is None:
+                m = re.search(r"terminada\s+en\s+(\d{4})", val, re.IGNORECASE)
+                if m:
+                    last4 = m.group(1)
+
+            # card_type desde celdas (ej: "Tarjeta Visa Crédito terminada en...")
+            if card_type is None:
+                if re.search(r"\bVisa\b", val, re.IGNORECASE):
+                    card_type = "Visa"
+                elif re.search(r"\bMastercard\b", val, re.IGNORECASE):
+                    card_type = "Mastercard"
+
+            # bank: "Movimientos del resumen" es el encabezado del XLSX de Santander
+            if bank is None and "movimientos del resumen" in val.lower():
+                bank = "santander"
+
+            # bank explícito si aparece nombre de banco
+            if bank is None:
+                if re.search(r"\bSantander\b", val, re.IGNORECASE):
+                    bank = "santander"
+                elif re.search(r"\bNacion\b", val, re.IGNORECASE):
+                    bank = "nacion"
+
+            # "Juan Pablo Ludueña (Titular)" → holder_name
+            if holder_name is None:
+                m = re.search(r"^(.+?)\s*\(Titular\)", val, re.IGNORECASE)
+                if m:
+                    holder_name = m.group(1).strip()
+
+        if holder_name and last4 and card_type and bank:
+            break
+
+    wb.close()
+    return holder_name, last4, card_type, bank
 
 
 def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:

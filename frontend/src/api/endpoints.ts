@@ -199,6 +199,26 @@ export function upsertFxRate(payload: { year_month: string; currency: 'USD' | 'A
   return postJson<FxRate>('/api/fx', payload)
 }
 
+export interface DetectImportResult {
+  detected_holder: string | null
+  detected_last4: string | null
+  detected_card_type: string | null
+  detected_bank: string | null
+  suggested_card_id: number | null
+  suggested_card_name: string | null
+  statement_year_month: string | null
+  row_count: number
+}
+
+export function detectImportCard(payload: { file: File; password?: string }): Promise<DetectImportResult> {
+  const formData = new FormData()
+  formData.append('file', payload.file)
+  if (payload.password && payload.password.trim()) {
+    formData.append('password', payload.password.trim())
+  }
+  return postForm<DetectImportResult>('/api/import/detect', formData)
+}
+
 export function importVisaXlsx(payload: { provider: string; cardId: number; file: File; is_common?: boolean }): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('file', payload.file)

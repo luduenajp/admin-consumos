@@ -7,13 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlmodel import select
 
-from app.crud import create_purchase, find_existing_purchase_for_installment_import, list_import_batches
+from app.crud import create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches
 from app.db import get_session
 from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
 from app.schemas import GSheetsImportRequest, ImportBatchRead, PurchaseCreate
 from app.importers.gsheets_importer import download_gsheets_csv, parse_gsheets_csv
-from app.importers.visa_pdf import parse_visa_pdf
+from app.importers.visa_pdf import extract_holder_hint_pdf, parse_visa_pdf
 from app.importers.visa_xlsx import (
+    extract_holder_hint_xlsx,
     compute_row_fingerprint,
     normalize_purchase_description,
     mark_imported,
@@ -136,8 +137,74 @@ def _process_installment_row(
 router = APIRouter()
 
 
+@router.post("/import/detect")
+def detect_import_card(
+    file: UploadFile = File(...),
+    password: str | None = Form(default=None),
+) -> dict:
+    """
+    Analiza un archivo de resumen (XLSX o PDF) y devuelve el titular detectado
+    y la tarjeta sugerida, sin crear ningún registro.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".xlsx", ".xls", ".pdf"}:
+        raise HTTPException(status_code=400, detail="Expected .xlsx, .xls or .pdf")
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp_path = Path(td) / file.filename
+        tmp_path.write_bytes(file.file.read())
+
+        try:
+            if suffix in {".xlsx", ".xls"}:
+                rows = parse_visa_xlsx(tmp_path)
+                holder_name, last4, card_type, bank = extract_holder_hint_xlsx(tmp_path)
+            else:
+                rows = parse_visa_pdf(tmp_path, password=password)
+                # Re-parse text to extract hint (same bytes already decrypted inside parse_visa_pdf)
+                from app.importers.visa_pdf import _decrypt_pdf_to_bytes
+                import io
+                import pdfplumber
+                raw = _decrypt_pdf_to_bytes(tmp_path, password)
+                full_text = ""
+                with pdfplumber.open(io.BytesIO(raw)) as pdf:
+                    for page in pdf.pages:
+                        t = page.extract_text()
+                        if t:
+                            full_text += t + "\n"
+                holder_name, last4, card_type, bank = extract_holder_hint_pdf(full_text)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to parse file: {e}") from e
+
+    suggested_card_id = None
+    suggested_card_name = None
+    if holder_name:
+        with get_session() as session:
+            card = find_card_by_holder(session=session, holder_name=holder_name, last4=last4)
+            if card is not None:
+                suggested_card_id = card.id
+                suggested_card_name = card.name
+
+    statement_ym = rows[0].statement_year_month if rows else None
+
+    return {
+        "detected_holder": holder_name,
+        "detected_last4": last4,
+        "detected_card_type": card_type,
+        "detected_bank": bank,
+        "suggested_card_id": suggested_card_id,
+        "suggested_card_name": suggested_card_name,
+        "statement_year_month": statement_ym,
+        "row_count": len(rows),
+    }
+
+
 @router.post("/import/visa-xlsx")
-def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default=False), file: UploadFile = File(...)) -> dict:
+def import_visa_xlsx(card_id: int, provider: str, is_common: bool = False, file: UploadFile = File(...)) -> dict:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
@@ -194,9 +261,9 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = Form(default
 def import_visa_pdf_endpoint(
     card_id: int,
     provider: str,
+    is_common: bool = False,
     file: UploadFile = File(...),
     password: str | None = Form(default=None),
-    is_common: bool = Form(default=False),
 ) -> dict:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")

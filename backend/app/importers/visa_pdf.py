@@ -490,6 +490,75 @@ def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedP
     return out
 
 
+def extract_holder_hint_pdf(
+    full_text: str,
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """
+    Extrae (holder_name, last4, card_type, bank) del texto completo de un PDF de resumen.
+    Retorna (None, None, None, None) si no se puede detectar.
+
+    Patrones validados:
+    - Banco Nación Visa:       "TITULAR DE CUENTA ONTIVERO CINTIA DEL VALLE" / "VISA PLATINUM" / "NACION"
+    - Banco Nación Mastercard: "TOTAL TITULAR ONTIVERO CINTIA DEL" / "MASTERCARD PLATINUM" / CUIT 30-50001091-2
+    - MercadoPago:             "¡Hola, Juan Pablo!" → Mastercard / mercadopago
+    """
+    holder_name: Optional[str] = None
+    last4: Optional[str] = None
+    card_type: Optional[str] = None
+    bank: Optional[str] = None
+
+    # --- Card type ---
+    if re.search(r"\bVISA\b", full_text, re.IGNORECASE):
+        card_type = "Visa"
+    elif re.search(r"\bMASTERCARD\b", full_text, re.IGNORECASE):
+        card_type = "Mastercard"
+
+    # --- Bank ---
+    # MercadoPago: saludo característico (siempre es Mastercard)
+    if re.search(r"[¡!]?Hola[,\s]", full_text):
+        bank = "mercadopago"
+        if card_type is None:
+            card_type = "Mastercard"
+    elif re.search(r"\bNACION\b", full_text, re.IGNORECASE) or "30-50001091-2" in full_text:
+        bank = "nacion"
+    elif re.search(r"\bSANTANDER\b", full_text, re.IGNORECASE):
+        bank = "santander"
+
+    # --- Holder name & last4 ---
+
+    # Banco Nación Visa: "TITULAR DE CUENTA ONTIVERO CINTIA DEL VALLE" (línea completa)
+    m = re.search(r"TITULAR\s+DE\s+CUENTA\s+([A-Z][A-Z ]+)$", full_text, re.MULTILINE)
+    if m:
+        holder_name = m.group(1).strip()
+
+    # Banco Nación Visa: "TARJETA 9694 Total Consumos de NOMBRE ..."
+    # Primer match = tarjeta del titular principal
+    if last4 is None or holder_name is None:
+        m = re.search(
+            r"TARJETA\s+(\d{4})\s+Total\s+Consumos\s+de\s+([A-Z][A-Z ]+?)\s+[\d,]",
+            full_text,
+        )
+        if m:
+            if last4 is None:
+                last4 = m.group(1)
+            if holder_name is None:
+                holder_name = m.group(2).strip()
+
+    # Banco Nación Mastercard: "TOTAL TITULAR NOMBRE APELLIDO 94323,54"
+    if holder_name is None:
+        m = re.search(r"TOTAL\s+TITULAR\s+([A-Z][A-Z ]+?)\s+[\d,]", full_text)
+        if m:
+            holder_name = m.group(1).strip()
+
+    # MercadoPago: "¡Hola, Juan Pablo!"
+    if holder_name is None:
+        m = re.search(r"[¡!]?Hola[,\s]+([^!¡\n]{2,40})[!¡]", full_text)
+        if m:
+            holder_name = m.group(1).strip().rstrip(",")
+
+    return holder_name, last4, card_type, bank
+
+
 def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPurchaseRow]:
     """
     Parsea un resumen de tarjeta Visa en formato PDF.
