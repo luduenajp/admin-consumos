@@ -229,11 +229,17 @@ All amounts are rounded using `_round_money()`: `round(value + 1e-9, 2)` to comp
 ### BR-008: Installment Schedule Generation
 
 On `create_purchase`, `_create_installment_schedule` generates entries:
-- `first_month` = `first_installment_month` or `to_year_month(purchase_date)`
+- `first_month`:
+  - If `payment_method` is `TRANSFER` or `CASH`: always `to_year_month(purchase_date)` — money exits immediately, belongs to the purchase month regardless of any `first_installment_month` provided (BR-024)
+  - Otherwise (CARD): `first_installment_month` if provided, else `to_year_month(purchase_date)`
 - For single installment: one entry at `first_month` with `installment_index=1`
 - For N installments: N entries from `first_month` to `first_month + (N-1)`, with `installment_index` 1..N
 - Each entry's `amount_original` = normalized installment amount (BR-007)
 - `amount_ars` is always `None` (conversion happens at query time)
+
+### BR-024: Transfer/Cash Month = Purchase Month
+
+For `payment_method` in `{TRANSFER, CASH}`, `first_installment_month` is always forced to `to_year_month(purchase_date)` by `create_purchase`, ignoring any caller-supplied value. Rationale: transfers and cash payments exit the account immediately; they must appear in the dashboard for the month the transaction occurred, not a billing cycle later.
 
 ### BR-009: Category Rename Cascade
 

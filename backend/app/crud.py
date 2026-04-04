@@ -18,6 +18,7 @@ from app.models import (
     InstallmentSchedule,
     MonthlyBudget,
     ImportBatch,
+    PaymentMethod,
     Person,
     Purchase,
     PurchasePayer,
@@ -148,7 +149,12 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
             if session.get(Person, p.person_id) is None:
                 raise ValueError(f"Payer person_id {p.person_id}: Person not found")
 
-    first_month = payload.first_installment_month or to_year_month(payload.purchase_date)
+    # For TRANSFER and CASH, money exits immediately — always use the purchase month
+    # regardless of what the caller provides (avoids billing-cycle shift from card importers)
+    if payload.payment_method in (PaymentMethod.TRANSFER, PaymentMethod.CASH):
+        first_month = to_year_month(payload.purchase_date)
+    else:
+        first_month = payload.first_installment_month or to_year_month(payload.purchase_date)
     installment_amount = _normalize_installment_amount(
         amount_original=payload.amount_original,
         installments_total=payload.installments_total,
