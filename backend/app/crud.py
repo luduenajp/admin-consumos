@@ -1394,53 +1394,184 @@ def delete_category(*, session: Session, category_id: int) -> None:
     session.commit()
 
 
+import re as _re
+from collections import Counter as _Counter, defaultdict as _defaultdict
+
+# --- Inference helpers ---
+
+_CUIL_RE = _re.compile(r'(?:CUIT|CUIL)\s+(\d{11}|\d{2}-\d{8}-\d)', _re.IGNORECASE)
+_LEADING_NUM_RE = _re.compile(r'^\d{5,}\s+')
+_INSTALLMENT_RE = _re.compile(r'C\.\d+/\d+|\b\d+ de \d+\b', _re.IGNORECASE)
+_TRAILING_CODE_RE = _re.compile(r'\s+[A-Z0-9]{3,}\s*$')
+
+# Categories that are too generic to learn patterns from (avoid polluting the map)
+_SKIP_LEARNING_CATS = {"OTROS - VARIOS", "Sin categoría"}
+
+# Keyword rules mapped to actual category names used in the DB
+_KEYWORD_RULES: list[tuple[str, list[str]]] = [
+    ("Supermercado", ["COTO", "CARREFOUR", "JUMBO", "DISCO", "VEA", "DIA ", "LA ANONIMA", "WALMART", "LIBERTAD", "MASONLINE", "HIPERMERCADO", "CHANGOMAS", "MAKRO"]),
+    ("Combustible", ["YPF", "SHELL", "AXION", "PETROBRAS", "PUMA ENERGY", "SHELLBOX"]),
+    ("Servicios", ["AYSA", "EDESUR", "EDENOR", "METROGAS", "EPEC", "CLARO", "MOVISTAR", "PERSONAL FLOW", "CABLEVISION", "TELECENTRO", "NETFLIX", "SPOTIFY", "DISNEY", "OPENAI", "CHATGPT", "GOOGLE ", "YOUTUBE", "PAGOS360", "ADT SECURITY", "PAGO TIC"]),
+    ("Peaje", ["CAMINOS DE LAS", "TELEPEAJE", "AUTOPISTA", "PEAJE"]),
+    ("Seguros", ["SEGUROS", "CHUBB", "SMG CIA", "BINA SEGUROS", "FEDERACION PATRONAL"]),
+    ("Mascotas", ["VETERINARIA", "PETSHOP", "PET SHOP", "VETERINARIO"]),
+    ("Impuestos", ["AFIP", "ARBA", "AGIP", "RENTAS", "IMPUESTO", "CORDOBA.GOB.AR", "ANSES", "SENASA"]),
+    ("Préstamos", ["PRESTAMO", "CUOTA PRESTAMO"]),
+    ("Autos", ["NEUMATICOS", "GOMERIA", "LUBRICENTRO", "TALLER MECANICO", "AUTOMOTORES", "REPUESTO"]),
+    ("Verdulería", ["VERDULERIA", "FRUTERIA", "FRUTAS Y VERDURAS"]),
+    ("Carnicería", ["CARNICERIA", "CARNES", "FRIGORIFICO", "FRIGORÍFICO"]),
+    ("Regalos", ["TOY STORE", "JUGUETERIA", "JUGUETES"]),
+    ("Transporte", ["SUBE", "UBER", "CABIFY", "DIDI", "RAPPI", "PEDIDOSYA"]),
+    ("Salud", ["OSDE", "SWISS MEDICAL", "FARMACIA", "LABORATORIO", "MEDICO", "CLINICA"]),
+    ("Educación", ["COLEGIO", "UNIVERSIDAD", "LIBRERIA", "CUOTA COLEGIO"]),
+    ("Entretenimiento", ["CINEMA", "TEATRO", "CINE", "BOLICHE", "PARQUE"]),
+    ("Hogar", ["EASY", "SODIMAC", "FERRETERIA", "BLANQUERIA", "IKEA"]),
+]
+
+
+def _extract_cuil(desc: str) -> str | None:
+    """Extract CUIL/CUIT number from description, or None if not found."""
+    m = _CUIL_RE.search(desc)
+    if m:
+        return _re.sub(r"-", "", m.group(1))
+    return None
+
+
+def _normalize_desc_for_inference(desc: str) -> str:
+    """Normalize description to a stable key for pattern matching."""
+    d = _LEADING_NUM_RE.sub("", desc)
+    d = _INSTALLMENT_RE.sub("", d)
+    # Remove trailing numeric codes (comprobante numbers, PIN codes, etc.)
+    d = _re.sub(r"\s+[\d\s\-]{4,}$", "", d)
+    return d.strip().upper()
+
+
+def _build_inference_maps(session: Session) -> tuple[dict[str, str], dict[str, str]]:
+    """
+    Build two inference maps from existing categorized purchases:
+    - cuil_map: CUIL/CUIT string → most common category for that CUIL
+    - desc_map: normalized description → most common category
+    Skips generic categories (OTROS - VARIOS) to avoid polluting the maps.
+    """
+    all_categorized = session.exec(
+        select(Purchase).where(
+            (Purchase.category != None)
+            & (Purchase.category != "Sin categoría")
+        )
+    ).all()
+
+    cuil_cats: dict[str, list[str]] = _defaultdict(list)
+    desc_cats: dict[str, list[str]] = _defaultdict(list)
+
+    for p in all_categorized:
+        if p.category in _SKIP_LEARNING_CATS:
+            continue
+        cuil = _extract_cuil(p.description)
+        if cuil:
+            cuil_cats[cuil].append(p.category)
+        norm = _normalize_desc_for_inference(p.description)
+        if norm and len(norm) > 3:
+            desc_cats[norm].append(p.category)
+
+    cuil_map = {cuil: _Counter(cats).most_common(1)[0][0] for cuil, cats in cuil_cats.items()}
+    desc_map = {desc: _Counter(cats).most_common(1)[0][0] for desc, cats in desc_cats.items()}
+    return cuil_map, desc_map
+
+
 def auto_categorize_purchases(*, session: Session) -> int:
     """
-    Assign categories to purchases that are 'Sin categoría' or None,
-    based on keywords in the description.
+    Assign categories to uncategorized purchases using 3-tier inference:
+    1. CUIT/CUIL match: if a CUIT was previously categorized, reuse that category
+    2. Normalized description match: if description pattern was categorized before, reuse
+    3. Keyword rules: hardcoded keyword → category mapping
     Returns the number of updated purchases.
     """
-    # Define mapping of keywords to categories (normalized names)
-    keyword_map = {
-        "supermercado": ["COTO", "CARREFOUR", "JUMBO", "DISCO", "VEA", "DIA", "LA ANONIMA"],
-        "servicios": ["AYSA", "EDESUR", "EDENOR", "METROGAS", "PERSONAL", "MOVISTAR", "CLARO", "CABLEVISION", "TELECENTRO"],
-        "restaurantes": ["MC DONALDS", "BURGER KING", "STARBUCKS", "PEDIDOSYA", "RAPPI", "RESTAURANT", "CAFE", "CERVECERIA"],
-        "transporte": ["SUBE", "UBER", "CABIFY", "DIDI", "AXION", "YPF", "SHELL", "ESTACION DE SERV"],
-        "hogar": ["EASY", "SODIMAC", "FERRETERIA", "BLANQUERIA"],
-        "salud": ["OSDE", "SWISS MEDICAL", "FARMACIA", "LABORATORIO"],
-        "educacion": ["COLEGIO", "UNIVERSIDAD", "LIBRE RIA"],
-        "entretenimiento": ["NETFLIX", "SPOTIFY", "DISNEY", "CINEMA", "TEATRO"],
-    }
+    cuil_map, desc_map = _build_inference_maps(session)
 
-    # Ensure categories exist in the Category table
-    for cat_name in keyword_map.keys():
-        stmt = select(Category).where(Category.name == cat_name)
-        if session.exec(stmt).first() is None:
-            session.add(Category(name=cat_name))
-    session.commit()
+    uncategorized = session.exec(
+        select(Purchase).where(
+            (Purchase.category == None) | (Purchase.category == "Sin categoría")
+        )
+    ).all()
 
-    # Get purchases without category
-    stmt = select(Purchase).where((Purchase.category == None) | (Purchase.category == "Sin categoría"))
-    purchases = session.exec(stmt).all()
-    
     count = 0
-    for p in purchases:
-        desc_upper = p.description.upper()
+    for p in uncategorized:
         found_cat = None
-        for cat_name, keywords in keyword_map.items():
-            if any(k in desc_upper for k in keywords):
-                found_cat = cat_name
-                break
-        
+
+        # Tier 1: CUIT/CUIL match
+        cuil = _extract_cuil(p.description)
+        if cuil and cuil in cuil_map:
+            found_cat = cuil_map[cuil]
+
+        # Tier 2: Normalized description match
+        if not found_cat:
+            norm = _normalize_desc_for_inference(p.description)
+            if norm in desc_map:
+                found_cat = desc_map[norm]
+
+        # Tier 3: Keyword rules
+        if not found_cat:
+            desc_upper = p.description.upper()
+            for cat_name, keywords in _KEYWORD_RULES:
+                if any(k.upper() in desc_upper for k in keywords):
+                    found_cat = cat_name
+                    break
+
         if found_cat:
             p.category = found_cat
             session.add(p)
             count += 1
-    
+
     if count > 0:
         session.commit()
 
     return count
+
+
+def get_categorization_rules(*, session: Session) -> dict:
+    """
+    Return the learned categorization rules derived from existing purchases,
+    plus the hardcoded keyword rules.
+    """
+    cuil_map, desc_map = _build_inference_maps(session)
+
+    # Enrich CUIL rules with occurrence counts
+    all_categorized = session.exec(
+        select(Purchase).where(
+            (Purchase.category != None) & (Purchase.category != "Sin categoría")
+        )
+    ).all()
+
+    cuil_counts: dict[str, list[str]] = _defaultdict(list)
+    desc_counts: dict[str, list[str]] = _defaultdict(list)
+    for p in all_categorized:
+        if p.category in _SKIP_LEARNING_CATS:
+            continue
+        cuil = _extract_cuil(p.description)
+        if cuil:
+            cuil_counts[cuil].append(p.category)
+        norm = _normalize_desc_for_inference(p.description)
+        if norm and len(norm) > 3:
+            desc_counts[norm].append(p.category)
+
+    learned_cuil = [
+        {"pattern": cuil, "type": "cuil", "category": cat, "occurrences": len(cuil_counts[cuil])}
+        for cuil, cat in cuil_map.items()
+    ]
+    learned_desc = [
+        {"pattern": desc, "type": "description", "category": cat, "occurrences": len(desc_counts[desc])}
+        for desc, cat in desc_map.items()
+    ]
+    keyword_rules = [
+        {"category": cat, "type": "keyword", "keywords": kws}
+        for cat, kws in _KEYWORD_RULES
+    ]
+
+    return {
+        "learned_cuil": sorted(learned_cuil, key=lambda x: -x["occurrences"]),
+        "learned_descriptions": sorted(learned_desc, key=lambda x: -x["occurrences"]),
+        "keyword_rules": keyword_rules,
+    }
 
 
 def detect_recurring_expenses(

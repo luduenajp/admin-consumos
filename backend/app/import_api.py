@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlmodel import select
 
-from app.crud import create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches
+from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches
 from app.db import get_session
 from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
 from app.schemas import GSheetsImportRequest, ImportBatchRead, PurchaseCreate
@@ -254,6 +254,9 @@ def import_visa_xlsx(card_id: int, provider: str, is_common: bool = False, file:
         session.commit()
         batch_id = batch.id
 
+    with get_session() as session:
+        auto_categorize_purchases(session=session)
+
     return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
 
 
@@ -313,6 +316,9 @@ def import_visa_pdf_endpoint(
         batch.purchases_parsed = len(rows)
         session.commit()
         batch_id = batch.id
+
+    with get_session() as session:
+        auto_categorize_purchases(session=session)
 
     return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
 
@@ -390,6 +396,9 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
         batch.purchases_parsed = len(rows)
         session.commit()
         batch_id = batch.id
+
+    with get_session() as session:
+        auto_categorize_purchases(session=session)
 
     return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
 

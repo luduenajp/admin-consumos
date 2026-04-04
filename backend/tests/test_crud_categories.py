@@ -111,8 +111,8 @@ class TestAutoCategorizePurchases:
 
         purchases = list(session.exec(select(Purchase).order_by(Purchase.description)))
         categories = {p.description: p.category for p in purchases}
-        assert categories["COTO DIGITAL"] == "supermercado"
-        assert categories["NETFLIX"] == "entretenimiento"
+        assert categories["COTO DIGITAL"] == "Supermercado"
+        assert categories["NETFLIX"] == "Servicios"
 
     def test_already_categorized_not_touched(self, session, two_person_scenario):
         s = two_person_scenario

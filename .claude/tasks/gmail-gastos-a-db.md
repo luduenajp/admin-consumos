@@ -51,7 +51,7 @@ Procesar SOLO los siguientes tipos (identificar por From y Subject antes de leer
 IGNORAR (marcar como procesado igualmente para no revisarlos en futuras corridas):
 - Encuestas, opiniones, resúmenes de cuenta, vencimientos, alertas de seguridad, promociones, seguros (actualizaciones de cobertura)
 - "Tu pago fue anulado" — ignorar y también ignorar el pago original del mismo comercio/monto/fecha
-- Transferencias donde el beneficiario es el mismo Juan Pablo (CBU Santander de Pablo o nombre "Ludue" / "Juan Pablo")
+- Transferencias donde el beneficiario es el mismo Juan Pablo: CUIL **20339576786**, DNI **33957678**, nombre contiene "Ludue" o "Juan Pablo", o CBU conocido de Pablo
 - Solicitudes/notificaciones de reembolso sin monto de compra nuevo
 - "Pago aprobado en X" de MercadoPago cuando ya existe notificación Santander del mismo comercio/monto/fecha
 

@@ -10,6 +10,7 @@ from sqlmodel import select
 
 from app.crud import (
     auto_categorize_purchases,
+    get_categorization_rules,
     bulk_update_purchases,
     calculate_monthly_balance,
     calculate_transfers,
@@ -322,6 +323,13 @@ def post_auto_categorize_purchases() -> dict:
     with get_session() as session:
         count = auto_categorize_purchases(session=session)
         return {"updated": count}
+
+
+@router.get("/purchases/categorization-rules")
+def get_categorization_rules_endpoint() -> dict:
+    """Return learned CUIL/description rules and hardcoded keyword rules."""
+    with get_session() as session:
+        return get_categorization_rules(session=session)
 
 
 @router.get("/reports/month-breakdown", response_model=MonthBreakdownResponse)
