@@ -74,7 +74,7 @@ done
 # --- Iniciar frontend (vite preview) ---
 echo "[admin-consumos] Iniciando frontend en http://localhost:$FRONTEND_PORT ..."
 cd "$ROOT_DIR/frontend"
-nohup env BACKEND_PORT=$BACKEND_PORT /usr/local/bin/npx vite preview --port "$FRONTEND_PORT" --host 0.0.0.0 \
+nohup env PATH="/usr/local/bin:$PATH" BACKEND_PORT=$BACKEND_PORT npx vite preview --port "$FRONTEND_PORT" --host 0.0.0.0 \
   >> "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
