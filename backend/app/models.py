@@ -4,6 +4,7 @@ from datetime import date
 from enum import Enum
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -34,6 +35,16 @@ class Card(SQLModel, table=True):
     provider: str
     owner_person_id: int = Field(foreign_key="person.id")
     last4: Optional[str] = None
+
+
+class CardStatement(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("card_id", "year_month", name="uq_cardstatement_card_month"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    card_id: int = Field(foreign_key="card.id", index=True)
+    year_month: str  # YYYY-MM — mes del resumen
+    closing_date: date  # fecha exacta de cierre
+    due_date: Optional[date] = None  # fecha de vencimiento del pago
 
 
 class Debtor(SQLModel, table=True):
