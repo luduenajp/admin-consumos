@@ -1110,6 +1110,7 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
 
     from collections import defaultdict
     paid_amount_by_person_id = defaultdict(float)
+    common_paid_by_person_id = defaultdict(float)
     should_pay_by_person_id = defaultdict(float)
     
     # We need a name mapping for all people involved
@@ -1182,6 +1183,7 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
             person_id_to_name[p.id] = p.name
         should_pay_by_person_id[p.id] = 0.0
         paid_amount_by_person_id[p.id] = 0.0
+        common_paid_by_person_id[p.id] = 0.0
 
     target_base_take_home = (total_ingresos - total_common_expenses) / num_total_people if num_total_people > 0 else 0.0
 
@@ -1194,7 +1196,7 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
     # Calculate who paid what
     for pid, amount_ars, owner_pid, _cid, is_common, card_owner_pid, beneficiary_pid in schedule_rows:
         inst_amt = float(amount_ars or 0.0)
-        
+
         payers = payers_by_purchase_id.get(pid, [])
         if payers:
             for p in payers:
@@ -1203,10 +1205,14 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
                 else:
                     amt = p.share_value
                 paid_amount_by_person_id[p.person_id] += amt
+                if is_common:
+                    common_paid_by_person_id[p.person_id] += amt
         else:
             actual_payer_pid = owner_pid if owner_pid is not None else card_owner_pid
             if actual_payer_pid is not None:
                 paid_amount_by_person_id[actual_payer_pid] += inst_amt
+                if is_common:
+                    common_paid_by_person_id[actual_payer_pid] += inst_amt
     
     # Get internal debt transfers for the month
     PersonFrom = aliased(Person)
@@ -1244,18 +1250,23 @@ def calculate_transfers(*, session: Session, year_month: str) -> Optional[dict]:
     gastos_por_persona = []
     for person_id in sorted(person_id_to_name.keys()):
         paid_amount = float(paid_amount_by_person_id[person_id])
+        common_paid = float(common_paid_by_person_id[person_id])
         should_pay = float(should_pay_by_person_id[person_id])
-        
+        income = income_by_person_id.get(person_id, 0.0)
+        common_should_pay = income - target_base_take_home
+
         # Adjust difference with internal transfers
         # (paid - should_pay) + sent - received
         initial_diff = paid_amount - should_pay
         adjustment = internal_sent[person_id] - internal_received[person_id]
         difference = initial_diff + adjustment
-        
+
         gastos_por_persona.append({
             "person_id": person_id,
             "person_name": person_id_to_name[person_id],
             "paid_amount": round(paid_amount, 2),
+            "common_paid": round(common_paid, 2),
+            "common_should_pay": round(common_should_pay, 2),
             "should_pay": round(should_pay, 2),
             "adjustment": round(adjustment, 2),
             "difference": round(difference, 2),

@@ -252,6 +252,8 @@ export interface TransferCalculationResponse {
     person_id: number
     person_name: string
     paid_amount: number
+    common_paid: number
+    common_should_pay: number
     should_pay: number
     adjustment: number
     difference: number

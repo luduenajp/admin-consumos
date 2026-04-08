@@ -307,6 +307,8 @@ class GastoPersonaItem(BaseModel):
     person_id: int
     person_name: str
     paid_amount: float
+    common_paid: float
+    common_should_pay: float
     should_pay: float
     adjustment: float
     difference: float

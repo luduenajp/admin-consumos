@@ -75,8 +75,8 @@ export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
   const chartData = hasExpenses
     ? transfers.gastos_por_persona.map((g) => ({
         name: g.person_name,
-        paid: Math.round(g.paid_amount),
-        should_pay: Math.round(g.should_pay),
+        paid: Math.round(g.common_paid),
+        should_pay: Math.round(g.common_should_pay),
       }))
     : []
 
@@ -191,21 +191,21 @@ export function TransferCalculationCard({ yearMonth }: { yearMonth?: string }) {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
                         <div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginBottom: '2px' }}>
-                            Pagó con tarjeta
+                            Pagó (gastos comunes)
                           </div>
                           <div style={{ fontSize: '1.05rem', fontWeight: 600 }}>
-                            {formatCurrency(gasto.paid_amount)}
+                            {formatCurrency(gasto.common_paid)}
                           </div>
                         </div>
 
                         <div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginBottom: '2px' }}>
-                            Le corresponde
+                            Le corresponde (comunes)
                           </div>
                           <div style={{ fontSize: '1.05rem', fontWeight: 600 }}>
-                            {gasto.should_pay >= 0
-                              ? formatCurrency(gasto.should_pay)
-                              : `(${formatCurrency(Math.abs(gasto.should_pay))} a favor)`
+                            {gasto.common_should_pay >= 0
+                              ? formatCurrency(gasto.common_should_pay)
+                              : `(${formatCurrency(Math.abs(gasto.common_should_pay))} a favor)`
                             }
                           </div>
                         </div>
