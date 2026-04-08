@@ -68,6 +68,7 @@ Para **compras con tarjeta** (Santander "Pagaste" y débitos automáticos):
 - `installment_amount_original` = round(amount_original / installments_total, 2)
 - `first_installment_month` = mes siguiente a purchase_date en formato YYYY-MM
 - `owner_person_id` = 1 (Pablo); adicional 7550 → 2 (Cintia)
+- `purchasepayer` = quien sea dueño de la tarjeta: card_id=1 → person_id=1 (Pablo); card_id=2 o 3 → person_id=2 (Cintia). El `owner_person_id` refleja quién hizo el consumo, pero el pago lo determina la tarjeta.
 - `category` según descripción:
   - EPEC, AguasCordobesas, ECOGAS, Personal, Claro, PAGOS360* → 'SERVICIOS'
   - SEGUROS RIVADAVIA, ADT, BINA SEGUROS, CHUBB, CHUBBTES → 'SEGUROS'

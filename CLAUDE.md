@@ -233,6 +233,46 @@ El objetivo final es que a todos les quede el mismo sobrante base después de ga
 - Use existing CSS class names from `App.css` — don't introduce new styling systems
 - All forms follow the pattern: `useState` for form state, `useMutation` for submission, inline error/success feedback
 
+## Tareas Programadas (Cowork Scheduled Tasks)
+
+Este proyecto tiene tareas automáticas que corren desde **Cowork** (la app de escritorio de Anthropic), usando el Claude Agent SDK. Claude Code puede necesitar leer o modificar estas tareas.
+
+### Ubicación
+
+```
+.claude/tasks/          ← archivos de instrucciones de cada tarea
+data/gmail_processed_ids.json   ← IDs de emails ya procesados (evita duplicados)
+```
+
+### Tarea activa: `gmail-gastos-a-db`
+
+**Archivo:** `.claude/tasks/gmail-gastos-a-db.md`
+
+**Qué hace:** Lee emails no leídos de Gmail (luduenajp@gmail.com), extrae gastos y transferencias bancarias, y los inserta directamente en `data/app.db`.
+
+**Cómo se ejecuta:** Cowork lanza un agente Claude con acceso al MCP de Gmail. El agente lee el archivo de instrucciones y ejecuta todo en Python via bash, usando una copia local de la DB para evitar errores de escritura en el mount FUSE:
+1. Copia `data/app.db` a `/tmp/admin_consumos_work.db`
+2. Opera sobre la copia
+3. Copia de vuelta al path original
+
+**Fuentes de email procesadas:**
+- Santander "Pagaste $X" → compra con tarjeta (card_id=1, Pablo)
+- Santander "Tu adicional hizo un consumo" → compra (card_id=1, Cintia person_id=2)
+- Santander / BNA "Aviso de transferencia" → `payment_method=TRANSFER`
+- MercadoPago "Tu transferencia fue enviada" → `payment_method=TRANSFER`
+
+**Emails ignorados:** promociones, resúmenes, transferencias donde el destinatario es el propio Pablo (CUIL 20339576786).
+
+**Anti-duplicación:** doble mecanismo — archivo `gmail_processed_ids.json` (por messageId) + query a la DB por fecha/descripción/monto.
+
+**`first_installment_month`:**
+- Compras con tarjeta → mes **siguiente** a la fecha de compra
+- Transferencias → **mismo mes** que la fecha de la transferencia
+
+### Si modificás el schema de la DB
+
+Si agregás columnas a `purchase`, `installmentschedule` o `purchasepayer`, actualizá también el archivo `.claude/tasks/gmail-gastos-a-db.md` (sección "Schema" al final) para que la tarea programada no falle.
+
 ## Roadmap / Nice To Have (NTH)
 
 Ideas para futuras mejoras que aportarían valor estratégico:
