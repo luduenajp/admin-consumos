@@ -31,6 +31,11 @@ import type {
   FamilyGoal,
   FamilyGoalCreate,
   FamilyGoalUpdate,
+  Saving,
+  SavingCreate,
+  SavingUpdate,
+  SavingSnapshot,
+  SavingSnapshotCreate,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -306,4 +311,32 @@ export function updateGoal(id: number, payload: FamilyGoalUpdate): Promise<Famil
 
 export function deleteGoal(id: number): Promise<void> {
   return deleteHttp(`/api/goals/${id}`)
+}
+
+export function fetchSavings(): Promise<Saving[]> {
+  return getJson<Saving[]>('/api/savings')
+}
+
+export function createSaving(payload: SavingCreate): Promise<Saving> {
+  return postJson<Saving>('/api/savings', payload)
+}
+
+export function updateSaving(id: number, payload: SavingUpdate): Promise<Saving> {
+  return patchJson<Saving>(`/api/savings/${id}`, payload)
+}
+
+export function deleteSaving(id: number): Promise<void> {
+  return deleteHttp(`/api/savings/${id}`)
+}
+
+export function fetchSavingSnapshots(savingId: number): Promise<SavingSnapshot[]> {
+  return getJson<SavingSnapshot[]>(`/api/savings/${savingId}/snapshots`)
+}
+
+export function createSavingSnapshot(savingId: number, payload: SavingSnapshotCreate): Promise<SavingSnapshot> {
+  return postJson<SavingSnapshot>(`/api/savings/${savingId}/snapshots`, payload)
+}
+
+export function deleteSavingSnapshot(savingId: number, snapshotId: number): Promise<void> {
+  return deleteHttp(`/api/savings/${savingId}/snapshots/${snapshotId}`)
 }

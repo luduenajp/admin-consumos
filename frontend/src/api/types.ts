@@ -331,3 +331,40 @@ export interface FamilyGoalUpdate {
   notes?: string | null
   priority?: string | null
 }
+
+export interface Saving {
+  id: number
+  person_id: number
+  investment_type: string
+  institution: string
+  currency: CurrencyCode
+  notes?: string | null
+  current_amount?: number | null
+  current_amount_date?: string | null
+}
+
+export interface SavingCreate {
+  person_id: number
+  investment_type: string
+  institution: string
+  currency: CurrencyCode
+  notes?: string | null
+}
+
+export interface SavingUpdate {
+  investment_type?: string | null
+  institution?: string | null
+  notes?: string | null
+}
+
+export interface SavingSnapshot {
+  id: number
+  saving_id: number
+  date: string
+  amount: number
+}
+
+export interface SavingSnapshotCreate {
+  date: string
+  amount: number
+}
