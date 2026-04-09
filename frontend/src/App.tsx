@@ -8,6 +8,7 @@ import { PurchasesPage } from './pages/purchases-page'
 import { BudgetPage } from './pages/budget-page'
 import { CategoriesPage } from './pages/categories-page'
 import { GoalsPage } from './pages/goals-page'
+import { SavingsPage } from './pages/savings-page'
 
 function App() {
   return (
@@ -26,6 +27,9 @@ function App() {
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/budget">
             Presupuesto
+          </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/ahorros">
+            Ahorros
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? 'appLink active' : 'appLink')} to="/categories">
             Categorías
@@ -48,6 +52,7 @@ function App() {
             <Route element={<BudgetPage />} path="/budget" />
             <Route element={<CategoriesPage />} path="/categories" />
             <Route element={<GoalsPage />} path="/goals" />
+            <Route element={<SavingsPage />} path="/ahorros" />
             <Route element={<AdminPage />} path="/admin" />
           </Routes>
         </ErrorBoundary>
