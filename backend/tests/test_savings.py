@@ -313,3 +313,31 @@ class TestSavingAPI:
         resp = client.patch(f"/api/savings/{saving_id}", json={"notes": "Updated notes"})
         assert resp.status_code == 200
         assert resp.json()["notes"] == "Updated notes"
+
+    def test_create_snapshot_amount_zero(self, client, two_persons):
+        alice, _ = two_persons
+        resp = client.post(
+            "/api/savings",
+            json={"person_id": alice.id, "investment_type": "FCI", "institution": "BNA", "currency": "ARS"},
+        )
+        saving_id = resp.json()["id"]
+
+        resp = client.post(
+            f"/api/savings/{saving_id}/snapshots",
+            json={"date": "2025-01-01", "amount": 0},
+        )
+        assert resp.status_code == 422
+
+    def test_create_snapshot_amount_negative(self, client, two_persons):
+        alice, _ = two_persons
+        resp = client.post(
+            "/api/savings",
+            json={"person_id": alice.id, "investment_type": "FCI", "institution": "BNA", "currency": "ARS"},
+        )
+        saving_id = resp.json()["id"]
+
+        resp = client.post(
+            f"/api/savings/{saving_id}/snapshots",
+            json={"date": "2025-01-01", "amount": -100},
+        )
+        assert resp.status_code == 422
