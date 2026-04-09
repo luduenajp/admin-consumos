@@ -18,6 +18,9 @@ backups/
 *.xls
 .env
 
+# Git worktrees
+.worktrees/
+
 # IDE / Tooling
 .vscode/
 .idea/
