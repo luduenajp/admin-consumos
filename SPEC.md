@@ -161,6 +161,26 @@ Multiple incomes per person per month are allowed.
 | `transfer_date` | date | default today |
 | `notes` | str? | optional |
 
+#### Saving
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `person_id` | int | FK → `person.id`, indexed |
+| `investment_type` | str | free text: "FCI", "Bono", "CDAR", etc. |
+| `institution` | str | free text: "Banco Nación", "MP", etc. |
+| `currency` | CurrencyCode | ARS or USD |
+| `notes` | str? | optional |
+
+#### SavingSnapshot
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `saving_id` | int | FK → `saving.id`, indexed |
+| `date` | date | snapshot date |
+| `amount` | float | `> 0` |
+
+Current value of a `Saving` is derived from its most recent `SavingSnapshot`. No `current_amount` field is stored on `Saving`.
+
 ---
 
 ## 3. Business Rules
@@ -764,6 +784,56 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
   - Props: `open`, `title`, `message`, `onConfirm`, `onCancel`
   - Used by: purchase delete, category delete, debt transfer delete
 
+### UC-067: Ahorros Page (`/ahorros`)
+
+**Actor:** User  
+**Goal:** View, manage, and track historical values of personal savings and investments.
+
+**Main Flow:**
+1. User navigates to `/ahorros`.
+2. System displays a table of all savings showing owner, type, institution, currency, current amount, and last updated date.
+3. User can click "Actualizar valor" on any row to open an inline form; enters date and amount to create a new `SavingSnapshot`.
+4. User can delete a saving (with confirmation); all associated snapshots are also deleted.
+5. The history chart panel shows checkboxes for each saving; user selects one or more to display their historical snapshots as lines on a Recharts LineChart.
+6. The new saving form allows creation of a saving with owner (person), investment type, institution, currency, and optional notes.
+
+### UC-070: List Savings
+
+**Actor:** Frontend  
+**Trigger:** `GET /api/savings`  
+**Returns:** `list[SavingRead]` — each item includes `current_amount` and `current_amount_date` from the most recent `SavingSnapshot` (null if no snapshots exist), ordered by `saving.id` ASC.
+
+### UC-071: Create Saving
+
+**Actor:** User  
+**Trigger:** `POST /api/savings` with `SavingCreate` payload  
+**Rules:**
+- `person_id` must reference an existing `Person` — raises `ValueError` (→ HTTP 400) if not found.
+- Returns `SavingRead` with `current_amount = null`.
+
+### UC-073: Delete Saving (Cascade)
+
+**Actor:** User  
+**Trigger:** `DELETE /api/savings/{id}`  
+**Rules:**
+- All `SavingSnapshot` records for that saving are deleted first (raw SQL, manual cascade).
+- Then the `Saving` record is deleted.
+- Raises `ValueError` (→ HTTP 404) if saving not found.
+
+### UC-074: List Snapshot History
+
+**Actor:** Frontend  
+**Trigger:** `GET /api/savings/{id}/snapshots`  
+**Returns:** `list[SavingSnapshotRead]` ordered by `date` ASC.
+
+### UC-075: Add Snapshot
+
+**Actor:** User  
+**Trigger:** `POST /api/savings/{id}/snapshots` with `SavingSnapshotCreate`  
+**Rules:**
+- `amount` must be `> 0` (Pydantic validation, → HTTP 422 if violated).
+- `saving_id` must reference an existing `Saving` — raises `ValueError` (→ HTTP 404) if not found.
+
 ---
 
 ## 10. API Endpoint Reference
@@ -808,6 +878,13 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 | `POST` | `/api/import/visa-xlsx` | UC-050 | Import Visa XLSX |
 | `POST` | `/api/import/visa-pdf` | UC-051 | Import Visa/MC PDF |
 | `POST` | `/api/import/gsheets` | UC-052 | Import Google Sheets CSV |
+| `GET` | `/api/savings` | UC-070 | List savings with current value |
+| `POST` | `/api/savings` | UC-071 | Create saving |
+| `PATCH` | `/api/savings/{id}` | UC-072 | Update saving |
+| `DELETE` | `/api/savings/{id}` | UC-073 | Delete saving and cascade snapshots |
+| `GET` | `/api/savings/{id}/snapshots` | UC-074 | List snapshot history for a saving |
+| `POST` | `/api/savings/{id}/snapshots` | UC-075 | Add snapshot to saving |
+| `DELETE` | `/api/savings/{id}/snapshots/{snapshot_id}` | UC-076 | Delete snapshot |
 
 ---
 
