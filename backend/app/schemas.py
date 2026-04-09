@@ -397,3 +397,40 @@ class SuggestMonthResponse(BaseModel):
     year_month: str
     closing_date: Optional[date] = None
     fallback: bool
+
+
+class SavingCreate(BaseModel):
+    person_id: int
+    investment_type: str
+    institution: str
+    currency: CurrencyCode
+    notes: Optional[str] = None
+
+
+class SavingUpdate(BaseModel):
+    investment_type: Optional[str] = None
+    institution: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SavingRead(BaseModel):
+    id: int
+    person_id: int
+    investment_type: str
+    institution: str
+    currency: CurrencyCode
+    notes: Optional[str] = None
+    current_amount: Optional[float] = None
+    current_amount_date: Optional[date] = None
+
+
+class SavingSnapshotCreate(BaseModel):
+    date: date
+    amount: float = Field(gt=0)
+
+
+class SavingSnapshotRead(BaseModel):
+    id: int
+    saving_id: int
+    date: date
+    amount: float

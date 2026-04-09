@@ -167,3 +167,19 @@ class FamilyGoal(SQLModel, table=True):
     is_completed: bool = Field(default=False)
     notes: Optional[str] = None
     priority: Optional[str] = None  # "low", "medium", "high"
+
+
+class Saving(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    person_id: int = Field(foreign_key="person.id", index=True)
+    investment_type: str  # free text: "FCI", "Bono", "CDAR", etc.
+    institution: str      # free text: "Banco Nación", "MP", etc.
+    currency: CurrencyCode = Field(index=True)
+    notes: Optional[str] = None
+
+
+class SavingSnapshot(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    saving_id: int = Field(foreign_key="saving.id", index=True)
+    date: date
+    amount: float
