@@ -33,6 +33,13 @@ from app.crud import (
     update_family_goal,
     delete_family_goal,
     export_dashboard_to_excel,
+    create_saving,
+    create_saving_snapshot,
+    delete_saving,
+    delete_saving_snapshot,
+    list_savings,
+    list_saving_snapshots,
+    update_saving,
     get_distinct_categories,
     get_monthly_budget,
     list_cards,
@@ -89,6 +96,11 @@ from app.schemas import (
     FamilyGoalCreate,
     FamilyGoalUpdate,
     FamilyGoalRead,
+    SavingCreate,
+    SavingUpdate,
+    SavingRead,
+    SavingSnapshotCreate,
+    SavingSnapshotRead,
 )
 
 router = APIRouter()
@@ -727,3 +739,114 @@ def delete_goal_endpoint(goal_id: int) -> Response:
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
     return Response(status_code=204)
+
+
+# --- Savings endpoints ---
+
+@router.get("/savings", response_model=list[SavingRead])
+def get_savings() -> list[SavingRead]:
+    with get_session() as session:
+        rows = list_savings(session=session)
+        return [
+            SavingRead(
+                id=saving.id,
+                person_id=saving.person_id,
+                investment_type=saving.investment_type,
+                institution=saving.institution,
+                currency=saving.currency,
+                notes=saving.notes,
+                current_amount=float(amount) if amount is not None else None,
+                current_amount_date=snap_date,
+            )
+            for saving, amount, snap_date in rows
+            if saving.id is not None
+        ]
+
+
+@router.post("/savings", response_model=SavingRead, status_code=201)
+def post_saving(payload: SavingCreate) -> SavingRead:
+    with get_session() as session:
+        try:
+            saving = create_saving(session=session, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return SavingRead(
+            id=saving.id,
+            person_id=saving.person_id,
+            investment_type=saving.investment_type,
+            institution=saving.institution,
+            currency=saving.currency,
+            notes=saving.notes,
+            current_amount=None,
+            current_amount_date=None,
+        )
+
+
+@router.patch("/savings/{saving_id}", response_model=SavingRead)
+def patch_saving(saving_id: int, payload: SavingUpdate) -> SavingRead:
+    with get_session() as session:
+        try:
+            saving = update_saving(session=session, saving_id=saving_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return SavingRead(
+            id=saving.id,
+            person_id=saving.person_id,
+            investment_type=saving.investment_type,
+            institution=saving.institution,
+            currency=saving.currency,
+            notes=saving.notes,
+            current_amount=None,
+            current_amount_date=None,
+        )
+
+
+@router.delete("/savings/{saving_id}")
+def delete_saving_endpoint(saving_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_saving(session=session, saving_id=saving_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return Response(status_code=204)
+
+
+@router.get("/savings/{saving_id}/snapshots", response_model=list[SavingSnapshotRead])
+def get_saving_snapshots(saving_id: int) -> list[SavingSnapshotRead]:
+    with get_session() as session:
+        snapshots = list_saving_snapshots(session=session, saving_id=saving_id)
+        return [
+            SavingSnapshotRead(
+                id=s.id,
+                saving_id=s.saving_id,
+                date=s.date,
+                amount=s.amount,
+            )
+            for s in snapshots
+            if s.id is not None
+        ]
+
+
+@router.post("/savings/{saving_id}/snapshots", response_model=SavingSnapshotRead, status_code=201)
+def post_saving_snapshot(saving_id: int, payload: SavingSnapshotCreate) -> SavingSnapshotRead:
+    with get_session() as session:
+        try:
+            snapshot = create_saving_snapshot(session=session, saving_id=saving_id, payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return SavingSnapshotRead(
+            id=snapshot.id,
+            saving_id=snapshot.saving_id,
+            date=snapshot.date,
+            amount=snapshot.amount,
+        )
+
+
+@router.delete("/savings/snapshots/{snapshot_id}")
+def delete_saving_snapshot_endpoint(snapshot_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_saving_snapshot(session=session, snapshot_id=snapshot_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return Response(status_code=204)

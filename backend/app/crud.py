@@ -25,6 +25,8 @@ from app.models import (
     ShareType,
     DebtTransfer,
     FamilyGoal,
+    Saving,
+    SavingSnapshot,
 )
 from app.schemas import (
     CardCreate,
@@ -38,7 +40,10 @@ from app.schemas import (
     MonthlyBudgetCreate,
     PersonCreate,
     PurchaseCreate,
-    PurchaseUpdate
+    PurchaseUpdate,
+    SavingCreate,
+    SavingUpdate,
+    SavingSnapshotCreate,
 )
 from app.utils_dates import add_months, to_year_month
 from app.importers.visa_xlsx import normalize_purchase_description
@@ -1674,4 +1679,109 @@ def delete_family_goal(*, session: Session, goal_id: int) -> None:
     if goal is None:
         raise ValueError(f"FamilyGoal {goal_id} not found")
     session.delete(goal)
+    session.commit()
+
+
+# --- Saving CRUD ---
+
+def list_savings(*, session: Session) -> list[tuple[Saving, float | None, date | None]]:
+    """Returns list of (Saving, current_amount, current_amount_date) tuples.
+    current_amount and date come from the most recent SavingSnapshot per saving.
+    """
+    from sqlalchemy import select as sa_select, func as sa_func
+
+    latest_snapshot_subq = (
+        sa_select(
+            SavingSnapshot.saving_id,
+            sa_func.max(SavingSnapshot.date).label("max_date"),
+        )
+        .group_by(SavingSnapshot.saving_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Saving, SavingSnapshot.amount, SavingSnapshot.date)
+        .outerjoin(
+            latest_snapshot_subq,
+            Saving.id == latest_snapshot_subq.c.saving_id,
+        )
+        .outerjoin(
+            SavingSnapshot,
+            (SavingSnapshot.saving_id == latest_snapshot_subq.c.saving_id)
+            & (SavingSnapshot.date == latest_snapshot_subq.c.max_date),
+        )
+        .order_by(Saving.id)
+    )
+    return list(session.exec(stmt).all())  # type: ignore[return-value]
+
+
+def create_saving(*, session: Session, payload: SavingCreate) -> Saving:
+    person = session.get(Person, payload.person_id)
+    if person is None:
+        raise ValueError("Person not found")
+    saving = Saving(
+        person_id=payload.person_id,
+        investment_type=payload.investment_type,
+        institution=payload.institution,
+        currency=payload.currency,
+        notes=payload.notes,
+    )
+    session.add(saving)
+    session.commit()
+    session.refresh(saving)
+    return saving
+
+
+def update_saving(*, session: Session, saving_id: int, payload: SavingUpdate) -> Saving:
+    saving = session.get(Saving, saving_id)
+    if saving is None:
+        raise ValueError(f"Saving {saving_id} not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(saving, field, value)
+    session.add(saving)
+    session.commit()
+    session.refresh(saving)
+    return saving
+
+
+def delete_saving(*, session: Session, saving_id: int) -> None:
+    """Delete a saving and all its snapshots (manual cascade)."""
+    from sqlalchemy import text as sa_text
+    saving = session.get(Saving, saving_id)
+    if saving is None:
+        raise ValueError(f"Saving {saving_id} not found")
+    session.exec(sa_text("DELETE FROM savingsnapshot WHERE saving_id = :sid").bindparams(sid=saving_id))  # type: ignore[call-overload]
+    session.exec(sa_text("DELETE FROM saving WHERE id = :sid").bindparams(sid=saving_id))  # type: ignore[call-overload]
+    session.commit()
+
+
+def list_saving_snapshots(*, session: Session, saving_id: int) -> list[SavingSnapshot]:
+    stmt = (
+        select(SavingSnapshot)
+        .where(SavingSnapshot.saving_id == saving_id)
+        .order_by(SavingSnapshot.date.asc())
+    )
+    return list(session.exec(stmt).all())
+
+
+def create_saving_snapshot(*, session: Session, saving_id: int, payload: SavingSnapshotCreate) -> SavingSnapshot:
+    saving = session.get(Saving, saving_id)
+    if saving is None:
+        raise ValueError(f"Saving {saving_id} not found")
+    snapshot = SavingSnapshot(
+        saving_id=saving_id,
+        date=payload.date,
+        amount=payload.amount,
+    )
+    session.add(snapshot)
+    session.commit()
+    session.refresh(snapshot)
+    return snapshot
+
+
+def delete_saving_snapshot(*, session: Session, snapshot_id: int) -> None:
+    snapshot = session.get(SavingSnapshot, snapshot_id)
+    if snapshot is None:
+        raise ValueError(f"SavingSnapshot {snapshot_id} not found")
+    session.delete(snapshot)
     session.commit()
