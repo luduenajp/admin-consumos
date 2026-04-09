@@ -789,6 +789,10 @@ def patch_saving(saving_id: int, payload: SavingUpdate) -> SavingRead:
             saving = update_saving(session=session, saving_id=saving_id, payload=payload)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+        rows = list_savings(session=session)
+        row = next(((s, a, d) for s, a, d in rows if s.id == saving_id), None)
+        current_amount = float(row[1]) if row and row[1] is not None else None
+        current_amount_date = row[2] if row else None
         return SavingRead(
             id=saving.id,
             person_id=saving.person_id,
@@ -796,8 +800,8 @@ def patch_saving(saving_id: int, payload: SavingUpdate) -> SavingRead:
             institution=saving.institution,
             currency=saving.currency,
             notes=saving.notes,
-            current_amount=None,
-            current_amount_date=None,
+            current_amount=current_amount,
+            current_amount_date=current_amount_date,
         )
 
 
@@ -842,8 +846,8 @@ def post_saving_snapshot(saving_id: int, payload: SavingSnapshotCreate) -> Savin
         )
 
 
-@router.delete("/savings/snapshots/{snapshot_id}")
-def delete_saving_snapshot_endpoint(snapshot_id: int) -> Response:
+@router.delete("/savings/{saving_id}/snapshots/{snapshot_id}")
+def delete_saving_snapshot_endpoint(saving_id: int, snapshot_id: int) -> Response:
     with get_session() as session:
         try:
             delete_saving_snapshot(session=session, snapshot_id=snapshot_id)
