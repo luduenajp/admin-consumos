@@ -35,10 +35,12 @@ from app.crud import (
     export_dashboard_to_excel,
     create_saving,
     create_saving_snapshot,
+    create_savings_exchange_rate,
     delete_saving,
     delete_saving_snapshot,
     list_savings,
     list_saving_snapshots,
+    list_savings_exchange_rates,
     update_saving,
     get_distinct_categories,
     get_monthly_budget,
@@ -101,6 +103,8 @@ from app.schemas import (
     SavingRead,
     SavingSnapshotCreate,
     SavingSnapshotRead,
+    SavingsExchangeRateCreate,
+    SavingsExchangeRateRead,
 )
 
 router = APIRouter()
@@ -854,3 +858,15 @@ def delete_saving_snapshot_endpoint(saving_id: int, snapshot_id: int) -> Respons
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return Response(status_code=204)
+
+
+@router.get("/savings-exchange-rate", response_model=list[SavingsExchangeRateRead])
+def get_savings_exchange_rates() -> list[SavingsExchangeRateRead]:
+    with get_session() as session:
+        return list_savings_exchange_rates(session=session)
+
+
+@router.post("/savings-exchange-rate", response_model=SavingsExchangeRateRead)
+def post_savings_exchange_rate(payload: SavingsExchangeRateCreate) -> SavingsExchangeRateRead:
+    with get_session() as session:
+        return create_savings_exchange_rate(session=session, payload=payload)
