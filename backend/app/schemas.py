@@ -447,3 +447,11 @@ class SavingsExchangeRateRead(BaseModel):
     date: str
     usd_buy: float
     usd_sell: float
+
+
+class SavingsTotalHistoryPoint(BaseModel):
+    date: str
+    total_ars: float
+    total_usd: float
+    total_in_ars: float | None
+    total_in_usd: float | None
