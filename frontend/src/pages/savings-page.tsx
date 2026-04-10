@@ -13,13 +13,15 @@ import {
 import {
   createSaving,
   createSavingSnapshot,
+  createSavingsExchangeRate,
   deleteSaving,
   fetchPeople,
   fetchSavingSnapshots,
   fetchSavings,
+  fetchSavingsExchangeRates,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode, Saving, SavingSnapshot } from '../api/types'
+import type { CurrencyCode, Saving, SavingSnapshot, SavingsExchangeRate } from '../api/types'
 
 const LINE_COLORS = [
   'var(--color-primary)',
@@ -218,6 +220,193 @@ function HistoryChart({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Totals panel                                                       */
+/* ------------------------------------------------------------------ */
+
+function SavingsTotalsPanel({ savings }: { savings: Saving[] }) {
+  const queryClient = useQueryClient()
+  const today = new Date().toISOString().split('T')[0]
+  const [showRateForm, setShowRateForm] = useState(false)
+  const [rateDate, setRateDate] = useState(today)
+  const [usdBuy, setUsdBuy] = useState('')
+  const [usdSell, setUsdSell] = useState('')
+  const [rateError, setRateError] = useState('')
+
+  const ratesQuery = useQuery({
+    queryKey: ['savings-exchange-rates'],
+    queryFn: fetchSavingsExchangeRates,
+  })
+
+  const rateMutation = useMutation({
+    mutationFn: () =>
+      createSavingsExchangeRate({
+        date: rateDate,
+        usd_buy: parseFloat(usdBuy),
+        usd_sell: parseFloat(usdSell),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['savings-exchange-rates'] })
+      setShowRateForm(false)
+      setUsdBuy('')
+      setUsdSell('')
+      setRateError('')
+    },
+    onError: (err) => setRateError(extractErrorMessage(err)),
+  })
+
+  const latestRate: SavingsExchangeRate | null = ratesQuery.data?.[0] ?? null
+
+  const withAmount = savings.filter((s) => s.current_amount != null)
+  const withoutAmount = savings.length - withAmount.length
+
+  const totalARS = withAmount
+    .filter((s) => s.currency === 'ARS')
+    .reduce((sum, s) => sum + (s.current_amount ?? 0), 0)
+
+  const totalUSD = withAmount
+    .filter((s) => s.currency === 'USD')
+    .reduce((sum, s) => sum + (s.current_amount ?? 0), 0)
+
+  const totalInARS = latestRate != null ? totalARS + totalUSD * latestRate.usd_buy : null
+  const totalInUSD = latestRate != null ? totalARS / latestRate.usd_sell + totalUSD : null
+
+  const locale = 'es-AR'
+
+  return (
+    <div className="panel">
+      <div className="panelTitle">Total ahorros</div>
+
+      <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <div>
+          <div className="label">Total ARS</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 600, color: 'var(--color-text)' }}>
+            ${totalARS.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div>
+          <div className="label">Total USD</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 600, color: 'var(--color-text)' }}>
+            U$S {totalUSD.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div>
+          <div className="label">Total en ARS (incl. USD)</div>
+          {totalInARS != null ? (
+            <div style={{ fontSize: '1.4rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+              ${totalInARS.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          ) : (
+            <div style={{ fontSize: '1.1rem', color: 'var(--color-text-secondary)' }}>—</div>
+          )}
+        </div>
+        <div>
+          <div className="label">Total en USD (incl. ARS)</div>
+          {totalInUSD != null ? (
+            <div style={{ fontSize: '1.4rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+              U$S {totalInUSD.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          ) : (
+            <div style={{ fontSize: '1.1rem', color: 'var(--color-text-secondary)' }}>—</div>
+          )}
+        </div>
+      </div>
+
+      {withoutAmount > 0 && (
+        <div className="hint" style={{ marginBottom: '12px' }}>
+          {withoutAmount} inversión{withoutAmount > 1 ? 'es' : ''} sin valor registrado (excluida{withoutAmount > 1 ? 's' : ''} del total)
+        </div>
+      )}
+
+      <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '4px' }}>
+        {latestRate != null ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: '0.85rem' }}>
+              Tipo de cambio oficial ({latestRate.date}): compra ${latestRate.usd_buy.toLocaleString(locale)} · venta ${latestRate.usd_sell.toLocaleString(locale)}
+            </span>
+            <button
+              className="button"
+              style={{ fontSize: '0.8rem', padding: '4px 10px', background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              onClick={() => setShowRateForm((v) => !v)}
+              type="button"
+            >
+              {showRateForm ? 'Cancelar' : 'Actualizar'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span className="hint">Registrá un tipo de cambio para ver el total unificado</span>
+            <button
+              className="button"
+              style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+              onClick={() => setShowRateForm((v) => !v)}
+              type="button"
+            >
+              {showRateForm ? 'Cancelar' : 'Registrar tipo de cambio'}
+            </button>
+          </div>
+        )}
+
+        {showRateForm && (
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '12px' }}>
+            <div className="formRow" style={{ marginBottom: 0 }}>
+              <label className="label">Fecha</label>
+              <input
+                className="input"
+                type="date"
+                value={rateDate}
+                onChange={(e) => setRateDate(e.target.value)}
+                style={{ width: '140px' }}
+              />
+            </div>
+            <div className="formRow" style={{ marginBottom: 0 }}>
+              <label className="label">Compra (ARS/USD)</label>
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={usdBuy}
+                onChange={(e) => setUsdBuy(e.target.value)}
+                placeholder="1150.00"
+                style={{ width: '130px' }}
+              />
+            </div>
+            <div className="formRow" style={{ marginBottom: 0 }}>
+              <label className="label">Venta (ARS/USD)</label>
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={usdSell}
+                onChange={(e) => setUsdSell(e.target.value)}
+                placeholder="1200.00"
+                style={{ width: '130px' }}
+              />
+            </div>
+            <button
+              className="button"
+              disabled={
+                rateMutation.isPending ||
+                !usdBuy ||
+                !usdSell ||
+                parseFloat(usdBuy) <= 0 ||
+                parseFloat(usdSell) <= 0
+              }
+              onClick={() => rateMutation.mutate()}
+              type="button"
+            >
+              {rateMutation.isPending ? 'Guardando…' : 'Guardar'}
+            </button>
+            {rateError && <span className="error">{rateError}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -280,6 +469,8 @@ export function SavingsPage() {
   return (
     <div className="page">
       <h1 className="pageTitle">Ahorros e Inversiones</h1>
+
+      <SavingsTotalsPanel savings={savings} />
 
       {/* ---- Panel 1: Table ---- */}
       <div className="panel">
