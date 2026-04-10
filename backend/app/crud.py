@@ -27,6 +27,7 @@ from app.models import (
     FamilyGoal,
     Saving,
     SavingSnapshot,
+    SavingsExchangeRate,
 )
 from app.schemas import (
     CardCreate,
@@ -44,6 +45,7 @@ from app.schemas import (
     SavingCreate,
     SavingUpdate,
     SavingSnapshotCreate,
+    SavingsExchangeRateCreate,
 )
 from app.utils_dates import add_months, to_year_month
 from app.importers.visa_xlsx import normalize_purchase_description
@@ -1785,3 +1787,25 @@ def delete_saving_snapshot(*, session: Session, snapshot_id: int) -> None:
         raise ValueError(f"SavingSnapshot {snapshot_id} not found")
     session.delete(snapshot)
     session.commit()
+
+
+# --- SavingsExchangeRate CRUD ---
+
+def list_savings_exchange_rates(*, session: Session) -> list[SavingsExchangeRate]:
+    """Returns all exchange rates ordered by date descending."""
+    stmt = select(SavingsExchangeRate).order_by(SavingsExchangeRate.date.desc())
+    return list(session.exec(stmt).all())
+
+
+def create_savings_exchange_rate(
+    *, session: Session, payload: SavingsExchangeRateCreate
+) -> SavingsExchangeRate:
+    rate = SavingsExchangeRate(
+        date=payload.date,
+        usd_buy=payload.usd_buy,
+        usd_sell=payload.usd_sell,
+    )
+    session.add(rate)
+    session.commit()
+    session.refresh(rate)
+    return rate

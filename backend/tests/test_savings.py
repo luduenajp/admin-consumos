@@ -6,14 +6,16 @@ import pytest
 from app.crud import (
     create_saving,
     create_saving_snapshot,
+    create_savings_exchange_rate,
     delete_saving,
     delete_saving_snapshot,
     list_saving_snapshots,
     list_savings,
+    list_savings_exchange_rates,
     update_saving,
 )
 from app.models import CurrencyCode
-from app.schemas import SavingCreate, SavingSnapshotCreate, SavingUpdate
+from app.schemas import SavingCreate, SavingSnapshotCreate, SavingUpdate, SavingsExchangeRateCreate
 
 
 class TestSavingCRUD:
@@ -339,5 +341,76 @@ class TestSavingAPI:
         resp = client.post(
             f"/api/savings/{saving_id}/snapshots",
             json={"date": "2025-01-01", "amount": -100},
+        )
+        assert resp.status_code == 422
+
+
+class TestSavingsExchangeRate:
+    def test_create_and_list(self, session):
+        rate = create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2026-04-09", usd_buy=1150.0, usd_sell=1200.0),
+        )
+        assert rate.id is not None
+        assert rate.usd_buy == 1150.0
+        assert rate.usd_sell == 1200.0
+
+        rates = list_savings_exchange_rates(session=session)
+        assert len(rates) == 1
+        assert rates[0].id == rate.id
+
+    def test_list_ordered_desc(self, session):
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2026-01-01", usd_buy=1000.0, usd_sell=1050.0),
+        )
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2026-04-09", usd_buy=1150.0, usd_sell=1200.0),
+        )
+        rates = list_savings_exchange_rates(session=session)
+        assert rates[0].date == "2026-04-09"
+        assert rates[1].date == "2026-01-01"
+
+
+class TestSavingsExchangeRateAPI:
+    def test_create_endpoint(self, client):
+        resp = client.post(
+            "/api/savings-exchange-rate",
+            json={"date": "2026-04-09", "usd_buy": 1150.0, "usd_sell": 1200.0},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] is not None
+        assert data["usd_buy"] == 1150.0
+        assert data["usd_sell"] == 1200.0
+        assert data["date"] == "2026-04-09"
+
+    def test_list_endpoint(self, client):
+        client.post(
+            "/api/savings-exchange-rate",
+            json={"date": "2026-01-01", "usd_buy": 1000.0, "usd_sell": 1050.0},
+        )
+        client.post(
+            "/api/savings-exchange-rate",
+            json={"date": "2026-04-09", "usd_buy": 1150.0, "usd_sell": 1200.0},
+        )
+        resp = client.get("/api/savings-exchange-rate")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        assert data[0]["date"] == "2026-04-09"  # most recent first
+
+    def test_create_invalid_buy(self, client):
+        resp = client.post(
+            "/api/savings-exchange-rate",
+            json={"date": "2026-04-09", "usd_buy": 0, "usd_sell": 1200.0},
+        )
+        assert resp.status_code == 422
+
+    def test_create_invalid_sell(self, client):
+        resp = client.post(
+            "/api/savings-exchange-rate",
+            json={"date": "2026-04-09", "usd_buy": 1150.0, "usd_sell": -1},
         )
         assert resp.status_code == 422

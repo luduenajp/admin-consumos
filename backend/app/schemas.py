@@ -434,3 +434,16 @@ class SavingSnapshotRead(BaseModel):
     saving_id: int
     date: date
     amount: float
+
+
+class SavingsExchangeRateCreate(BaseModel):
+    date: str  # YYYY-MM-DD
+    usd_buy: float = Field(gt=0)
+    usd_sell: float = Field(gt=0)
+
+
+class SavingsExchangeRateRead(BaseModel):
+    id: int
+    date: str
+    usd_buy: float
+    usd_sell: float

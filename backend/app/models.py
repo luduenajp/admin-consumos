@@ -183,3 +183,10 @@ class SavingSnapshot(SQLModel, table=True):
     saving_id: int = Field(foreign_key="saving.id", index=True)
     date: date
     amount: float
+
+
+class SavingsExchangeRate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: str = Field(index=True)  # YYYY-MM-DD
+    usd_buy: float   # price bank pays when buying USD (you receive this when selling USD)
+    usd_sell: float  # price bank charges when selling USD (you pay this when buying USD)
