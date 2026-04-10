@@ -36,6 +36,8 @@ import type {
   SavingUpdate,
   SavingSnapshot,
   SavingSnapshotCreate,
+  SavingsExchangeRate,
+  SavingsExchangeRateCreate,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -339,4 +341,14 @@ export function createSavingSnapshot(savingId: number, payload: SavingSnapshotCr
 
 export function deleteSavingSnapshot(savingId: number, snapshotId: number): Promise<void> {
   return deleteHttp(`/api/savings/${savingId}/snapshots/${snapshotId}`)
+}
+
+export function fetchSavingsExchangeRates(): Promise<SavingsExchangeRate[]> {
+  return getJson<SavingsExchangeRate[]>('/api/savings-exchange-rate')
+}
+
+export function createSavingsExchangeRate(
+  payload: SavingsExchangeRateCreate,
+): Promise<SavingsExchangeRate> {
+  return postJson<SavingsExchangeRate>('/api/savings-exchange-rate', payload)
 }

@@ -368,3 +368,16 @@ export interface SavingSnapshotCreate {
   date: string
   amount: number
 }
+
+export interface SavingsExchangeRate {
+  id: number
+  date: string
+  usd_buy: number
+  usd_sell: number
+}
+
+export interface SavingsExchangeRateCreate {
+  date: string
+  usd_buy: number
+  usd_sell: number
+}
