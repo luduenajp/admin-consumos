@@ -38,6 +38,7 @@ import type {
   SavingSnapshotCreate,
   SavingsExchangeRate,
   SavingsExchangeRateCreate,
+  SavingsTotalHistoryPoint,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -351,4 +352,8 @@ export function createSavingsExchangeRate(
   payload: SavingsExchangeRateCreate,
 ): Promise<SavingsExchangeRate> {
   return postJson<SavingsExchangeRate>('/api/savings-exchange-rate', payload)
+}
+
+export function fetchSavingsTotalHistory(): Promise<SavingsTotalHistoryPoint[]> {
+  return getJson<SavingsTotalHistoryPoint[]>('/api/savings/total-history')
 }

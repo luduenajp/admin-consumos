@@ -381,3 +381,11 @@ export interface SavingsExchangeRateCreate {
   usd_buy: number
   usd_sell: number
 }
+
+export interface SavingsTotalHistoryPoint {
+  date: string
+  total_ars: number
+  total_usd: number
+  total_in_ars: number | null
+  total_in_usd: number | null
+}
