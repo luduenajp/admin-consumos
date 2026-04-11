@@ -42,6 +42,7 @@ from app.crud import (
     list_saving_snapshots,
     list_savings_exchange_rates,
     update_saving,
+    get_savings_total_history,
     get_distinct_categories,
     get_monthly_budget,
     list_cards,
@@ -105,6 +106,7 @@ from app.schemas import (
     SavingSnapshotRead,
     SavingsExchangeRateCreate,
     SavingsExchangeRateRead,
+    SavingsTotalHistoryPoint,
 )
 
 router = APIRouter()
@@ -784,6 +786,12 @@ def post_saving(payload: SavingCreate) -> SavingRead:
             current_amount=None,
             current_amount_date=None,
         )
+
+
+@router.get("/savings/total-history", response_model=list[SavingsTotalHistoryPoint])
+def get_savings_total_history_endpoint() -> list[SavingsTotalHistoryPoint]:
+    with get_session() as session:
+        return get_savings_total_history(session=session)
 
 
 @router.patch("/savings/{saving_id}", response_model=SavingRead)
