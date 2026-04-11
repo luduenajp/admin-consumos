@@ -50,10 +50,12 @@ Para cada mensaje, si el `messageId` ya está en `processed_ids` → saltar sin 
 
 Esta regla aplica a todos los tipos de email. Excepción: "Tu adicional hizo un consumo" siempre es Cintia (person_id=2) independientemente del "To".
 
+El campo "To" está en los **headers** del mensaje (no en el body). Siempre leer los headers para determinar el owner antes de decidir si leer el body o no.
+
 **Tipos a procesar** (identificar por From y Subject antes de leer el body):
 
 1. **Santander "Pagaste $X"** — From contiene `santander.com.ar`, Subject contiene "Pagaste".
-   Del snippet extraer: Monto, Cuotas, Comercio, Fecha. No hace falta leer el body.
+   Leer headers para obtener "To" (owner). Del snippet extraer: Monto, Cuotas, Comercio, Fecha. No hace falta leer el body.
 
 2. **Santander "Aviso de débito automático"** — From Santander, Subject "Aviso de débito automático".
    Leer body: Monto, Comercio, Fecha.
@@ -79,6 +81,12 @@ Esta regla aplica a todos los tipos de email. Excepción: "Tu adicional hizo un 
 ---
 
 ## Paso 3 — Armar JSON con los registros
+
+Inicializar antes de iterar los emails:
+```python
+records = []
+ignored_ids = set()
+```
 
 Construir un objeto con dos claves:
 
@@ -169,6 +177,8 @@ result = subprocess.run(
     capture_output=True, text=True
 )
 print(result.stdout)
+if result.returncode != 0:
+    print(f'ERROR: el script terminó con código {result.returncode}')
 if result.stderr:
     print('STDERR:', result.stderr)
 

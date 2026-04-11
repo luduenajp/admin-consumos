@@ -259,14 +259,22 @@ def main():
                     (purchase_id, ym, i + 1, currency, installment_amount)
                 )
 
-            # Insertar payer
+            # Insertar payer — quien paga es el dueño de la tarjeta, no el consumidor.
+            # card_id=1 (Pablo) → payer=1; card_id=2/3 (Cintia) → payer=2.
+            # Transferencias (card_id=None) → payer=owner.
+            if card_id == 1:
+                payer_person_id = 1
+            elif card_id in (2, 3):
+                payer_person_id = 2
+            else:
+                payer_person_id = owner_person_id
             cur.execute(
                 "INSERT INTO purchasepayer (purchase_id, person_id, share_type, share_value) VALUES (?, ?, 'PERCENT', 100.0)",
-                (purchase_id, owner_person_id)
+                (purchase_id, payer_person_id)
             )
 
             created += 1
-            print(f'  ✓ INSERTADO: {date} | {desc} | ${amount:,.2f} | {category or "sin categoría"} | persona={owner_person_id}')
+            print(f'  ✓ INSERTADO: {date} | {desc} | ${amount:,.2f} | {category or "sin categoría"} | owner={owner_person_id} payer={payer_person_id}')
 
         # Actualizar batch
         total = created + skipped_dup_db
