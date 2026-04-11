@@ -414,3 +414,159 @@ class TestSavingsExchangeRateAPI:
             json={"date": "2026-04-09", "usd_buy": 1150.0, "usd_sell": -1},
         )
         assert resp.status_code == 422
+
+
+class TestGetSavingsTotalHistory:
+    def _make_ars_saving(self, session, two_persons):
+        alice, _ = two_persons
+        return create_saving(
+            session=session,
+            payload=SavingCreate(
+                person_id=alice.id,
+                investment_type="FCI",
+                institution="BNA",
+                currency=CurrencyCode.ARS,
+            ),
+        )
+
+    def _make_usd_saving(self, session, two_persons):
+        alice, _ = two_persons
+        return create_saving(
+            session=session,
+            payload=SavingCreate(
+                person_id=alice.id,
+                investment_type="Bono",
+                institution="BNA",
+                currency=CurrencyCode.USD,
+            ),
+        )
+
+    def test_no_savings_returns_empty(self, session):
+        from app.crud import get_savings_total_history
+        result = get_savings_total_history(session=session)
+        assert result == []
+
+    def test_no_snapshots_returns_empty(self, session, two_persons):
+        from app.crud import get_savings_total_history
+        self._make_ars_saving(session, two_persons)
+        result = get_savings_total_history(session=session)
+        assert result == []
+
+    def test_single_ars_saving_two_snapshots(self, session, two_persons):
+        from app.crud import get_savings_total_history
+        saving = self._make_ars_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=saving.id,
+            payload=SavingSnapshotCreate(date=date(2025, 1, 1), amount=100_000),
+        )
+        create_saving_snapshot(
+            session=session, saving_id=saving.id,
+            payload=SavingSnapshotCreate(date=date(2025, 3, 1), amount=150_000),
+        )
+        result = get_savings_total_history(session=session)
+        assert len(result) == 2
+        assert result[0].date == "2025-01-01"
+        assert result[0].total_ars == 100_000
+        assert result[0].total_usd == 0.0
+        assert result[0].total_in_ars is None  # no exchange rate
+        assert result[1].date == "2025-03-01"
+        assert result[1].total_ars == 150_000
+
+    def test_forward_fill_across_savings(self, session, two_persons):
+        """When saving B hasn't been updated on a date, its last known value is used."""
+        from app.crud import get_savings_total_history
+        ars = self._make_ars_saving(session, two_persons)
+        usd = self._make_usd_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=ars.id,
+            payload=SavingSnapshotCreate(date=date(2025, 1, 1), amount=100_000),
+        )
+        create_saving_snapshot(
+            session=session, saving_id=usd.id,
+            payload=SavingSnapshotCreate(date=date(2025, 2, 1), amount=500),
+        )
+        result = get_savings_total_history(session=session)
+        assert len(result) == 2
+        jan = result[0]
+        feb = result[1]
+        assert jan.date == "2025-01-01"
+        assert jan.total_ars == 100_000
+        assert jan.total_usd == 0.0
+        assert feb.date == "2025-02-01"
+        assert feb.total_ars == 100_000  # forward-filled from Jan 1
+        assert feb.total_usd == 500
+
+    def test_combined_totals_with_exchange_rate(self, session, two_persons):
+        from app.crud import get_savings_total_history
+        ars = self._make_ars_saving(session, two_persons)
+        usd = self._make_usd_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=ars.id,
+            payload=SavingSnapshotCreate(date=date(2025, 3, 1), amount=100_000),
+        )
+        create_saving_snapshot(
+            session=session, saving_id=usd.id,
+            payload=SavingSnapshotCreate(date=date(2025, 3, 1), amount=100),
+        )
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2025-02-01", usd_buy=1000.0, usd_sell=1050.0),
+        )
+        result = get_savings_total_history(session=session)
+        assert len(result) == 1
+        point = result[0]
+        assert point.total_ars == 100_000
+        assert point.total_usd == 100
+        assert point.total_in_ars == pytest.approx(100_000 + 100 * 1000.0)
+        assert point.total_in_usd == pytest.approx(100_000 / 1050.0 + 100)
+
+    def test_combined_null_when_no_prior_rate(self, session, two_persons):
+        from app.crud import get_savings_total_history
+        saving = self._make_ars_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=saving.id,
+            payload=SavingSnapshotCreate(date=date(2025, 1, 1), amount=50_000),
+        )
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2025-02-01", usd_buy=1000.0, usd_sell=1050.0),
+        )
+        result = get_savings_total_history(session=session)
+        assert len(result) == 1
+        assert result[0].total_in_ars is None
+        assert result[0].total_in_usd is None
+
+    def test_uses_closest_prior_exchange_rate(self, session, two_persons):
+        """Uses the most recent rate at or before the snapshot date, not just the latest."""
+        from app.crud import get_savings_total_history
+        usd = self._make_usd_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=usd.id,
+            payload=SavingSnapshotCreate(date=date(2025, 3, 1), amount=100),
+        )
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2025-02-01", usd_buy=1000.0, usd_sell=1050.0),
+        )
+        create_savings_exchange_rate(
+            session=session,
+            payload=SavingsExchangeRateCreate(date="2025-04-01", usd_buy=2000.0, usd_sell=2100.0),
+        )
+        result = get_savings_total_history(session=session)
+        assert len(result) == 1
+        assert result[0].total_in_ars == pytest.approx(100 * 1000.0)
+
+    def test_returns_sorted_by_date(self, session, two_persons):
+        from app.crud import get_savings_total_history
+        saving = self._make_ars_saving(session, two_persons)
+        create_saving_snapshot(
+            session=session, saving_id=saving.id,
+            payload=SavingSnapshotCreate(date=date(2025, 3, 1), amount=300_000),
+        )
+        create_saving_snapshot(
+            session=session, saving_id=saving.id,
+            payload=SavingSnapshotCreate(date=date(2025, 1, 1), amount=100_000),
+        )
+        result = get_savings_total_history(session=session)
+        dates = [r.date for r in result]
+        assert dates == sorted(dates)

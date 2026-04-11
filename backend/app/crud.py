@@ -46,6 +46,7 @@ from app.schemas import (
     SavingUpdate,
     SavingSnapshotCreate,
     SavingsExchangeRateCreate,
+    SavingsTotalHistoryPoint,
 )
 from app.utils_dates import add_months, to_year_month
 from app.importers.visa_xlsx import normalize_purchase_description
@@ -1809,3 +1810,88 @@ def create_savings_exchange_rate(
     session.commit()
     session.refresh(rate)
     return rate
+
+
+def get_savings_total_history(*, session: Session) -> list[SavingsTotalHistoryPoint]:
+    """Return forward-filled total savings per snapshot date.
+
+    For each unique date on which any snapshot was registered, computes:
+      - total_ars: sum of ARS savings (forward-filled)
+      - total_usd: sum of USD savings (forward-filled)
+      - total_in_ars: combined total converted to ARS using closest prior exchange rate (None if unavailable)
+      - total_in_usd: combined total converted to USD using closest prior exchange rate (None if unavailable)
+    """
+    from collections import defaultdict
+
+    savings = list(session.exec(select(Saving)).all())
+    if not savings:
+        return []
+
+    snapshots = list(
+        session.exec(select(SavingSnapshot).order_by(SavingSnapshot.date.asc())).all()
+    )
+    if not snapshots:
+        return []
+
+    # Group snapshots by saving_id (already sorted ascending by date)
+    snap_by_saving: dict[int, list[tuple[str, float]]] = defaultdict(list)
+    for snap in snapshots:
+        snap_by_saving[snap.saving_id].append((str(snap.date), snap.amount))
+
+    currency_by_saving: dict[int, CurrencyCode] = {
+        s.id: s.currency for s in savings if s.id is not None
+    }
+
+    all_dates = sorted({str(snap.date) for snap in snapshots})
+
+    rates = list(
+        session.exec(
+            select(SavingsExchangeRate).order_by(SavingsExchangeRate.date.asc())
+        ).all()
+    )
+
+    result: list[SavingsTotalHistoryPoint] = []
+    for d in all_dates:
+        total_ars = 0.0
+        total_usd = 0.0
+
+        for saving_id, snap_list in snap_by_saving.items():
+            # Forward-fill: latest snapshot with date <= d
+            value: float | None = None
+            for snap_date, snap_amount in snap_list:
+                if snap_date <= d:
+                    value = snap_amount
+                else:
+                    break
+            if value is not None:
+                currency = currency_by_saving.get(saving_id)
+                if currency == CurrencyCode.ARS:
+                    total_ars += value
+                elif currency == CurrencyCode.USD:
+                    total_usd += value
+
+        # Find the most recent exchange rate at or before d
+        applicable_rate: SavingsExchangeRate | None = None
+        for rate in rates:
+            if rate.date <= d:
+                applicable_rate = rate
+            else:
+                break
+
+        total_in_ars: float | None = None
+        total_in_usd: float | None = None
+        if applicable_rate is not None:
+            total_in_ars = total_ars + total_usd * applicable_rate.usd_buy
+            total_in_usd = total_ars / applicable_rate.usd_sell + total_usd
+
+        result.append(
+            SavingsTotalHistoryPoint(
+                date=d,
+                total_ars=total_ars,
+                total_usd=total_usd,
+                total_in_ars=total_in_ars,
+                total_in_usd=total_in_usd,
+            )
+        )
+
+    return result
