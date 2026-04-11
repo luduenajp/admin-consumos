@@ -19,9 +19,10 @@ import {
   fetchSavingSnapshots,
   fetchSavings,
   fetchSavingsExchangeRates,
+  fetchSavingsTotalHistory,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode, Saving, SavingSnapshot, SavingsExchangeRate } from '../api/types'
+import type { CurrencyCode, Saving, SavingSnapshot, SavingsExchangeRate, SavingsTotalHistoryPoint } from '../api/types'
 
 const LINE_COLORS = [
   'var(--color-primary)',
@@ -407,6 +408,106 @@ function SavingsTotalsPanel({ savings }: { savings: Saving[] }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Total history chart                                                */
+/* ------------------------------------------------------------------ */
+
+const TOTAL_LINES: Array<{ key: keyof SavingsTotalHistoryPoint; label: string; color: string }> = [
+  { key: 'total_ars',    label: 'Total ARS',                 color: LINE_COLORS[0] },
+  { key: 'total_usd',    label: 'Total USD',                 color: LINE_COLORS[1] },
+  { key: 'total_in_ars', label: 'Total en ARS (combinado)',  color: LINE_COLORS[2] },
+  { key: 'total_in_usd', label: 'Total en USD (combinado)',  color: LINE_COLORS[3] },
+]
+
+function TotalHistoryChart() {
+  const [visibleLines, setVisibleLines] = useState<Set<string>>(
+    new Set(['total_ars', 'total_usd'])
+  )
+
+  const query = useQuery({
+    queryKey: ['savings-total-history'],
+    queryFn: fetchSavingsTotalHistory,
+  })
+
+  const toggleLine = (key: string) => {
+    setVisibleLines((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  if (query.isLoading) return <div className="muted">Cargando…</div>
+
+  const data = query.data ?? []
+
+  if (data.length === 0) {
+    return <div className="muted">Sin snapshots registrados para mostrar el historial total</div>
+  }
+
+  const activeLines = TOTAL_LINES.filter(({ key }) => visibleLines.has(key))
+
+  return (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        {TOTAL_LINES.map(({ key, label, color }) => (
+          <label
+            key={key}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--color-text)' }}
+          >
+            <input
+              type="checkbox"
+              checked={visibleLines.has(key)}
+              onChange={() => toggleLine(key)}
+            />
+            <span style={{ color }}>{label}</span>
+          </label>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={data} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+          <XAxis dataKey="date" stroke="var(--color-text-secondary)" style={{ fontSize: '0.85rem' }} />
+          <YAxis
+            stroke="var(--color-text-secondary)"
+            style={{ fontSize: '0.85rem' }}
+            tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '6px',
+              fontSize: '0.9rem',
+            }}
+            formatter={(value, name) => {
+              const line = TOTAL_LINES.find((l) => l.key === String(name))
+              const isUsd = String(name).includes('usd')
+              const numValue = Number(value)
+              const formatted = isUsd
+                ? `U$S ${numValue.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `$${numValue.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              return [formatted, line?.label ?? String(name)]
+            }}
+          />
+          {activeLines.map(({ key, color }) => (
+            <Line
+              key={key}
+              type="monotone"
+              dataKey={key}
+              stroke={color}
+              strokeWidth={2}
+              dot={{ r: 4 }}
+              connectNulls={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -471,6 +572,12 @@ export function SavingsPage() {
       <h1 className="pageTitle">Ahorros e Inversiones</h1>
 
       <SavingsTotalsPanel savings={savings} />
+
+      {/* ---- Panel: Total history chart ---- */}
+      <div className="panel">
+        <div className="panelTitle">Evolución del total</div>
+        <TotalHistoryChart />
+      </div>
 
       {/* ---- Panel 1: Table ---- */}
       <div className="panel">
