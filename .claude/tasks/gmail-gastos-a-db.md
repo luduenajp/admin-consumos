@@ -31,6 +31,8 @@ if os.path.exists(ID_FILE):
         processed_ids = set(json.load(f))
 else:
     processed_ids = set()
+
+ignored_ids = set()  # se irán agregando a medida que se lean emails ignorados
 ```
 
 ---
@@ -41,6 +43,13 @@ Buscar en Gmail: query `is:unread`, maxResults: 50.
 
 Para cada mensaje, si el `messageId` ya está en `processed_ids` → saltar sin leerlo.
 
+**Determinar owner por campo "To" del email:**
+- `To` contiene `luduenajp` → `owner_person_id` = 1 (Pablo)
+- `To` contiene `ciontiver10` → `owner_person_id` = 2 (Cintia)
+- Si no se puede determinar → asumir owner_person_id = 1
+
+Esta regla aplica a todos los tipos de email. Excepción: "Tu adicional hizo un consumo" siempre es Cintia (person_id=2) independientemente del "To".
+
 **Tipos a procesar** (identificar por From y Subject antes de leer el body):
 
 1. **Santander "Pagaste $X"** — From contiene `santander.com.ar`, Subject contiene "Pagaste".
@@ -50,7 +59,7 @@ Para cada mensaje, si el `messageId` ya está en `processed_ids` → saltar sin 
    Leer body: Monto, Comercio, Fecha.
 
 3. **Santander "Tu adicional hizo un consumo"** — From Santander.
-   Leer body: Monto, Cuotas, Comercio, Fecha, número de tarjeta del adicional. Owner = Cintia (person_id=2).
+   Leer body: Monto, Cuotas, Comercio, Fecha, número de tarjeta del adicional. Owner = Cintia (person_id=2) siempre.
 
 4. **Santander "Aviso de transferencia"** — From Santander.
    Leer body: Importe, CUIT Destinatario, CBU Crédito, Fecha.
@@ -61,7 +70,7 @@ Para cada mensaje, si el `messageId` ya está en `processed_ids` → saltar sin 
 6. **BNA "Transferencia Debitada"** — From `noreply@bnainfo.bna.com.ar`.
    Leer body: Importe, CUIT del Destinatario, CBU Crédito, Fecha.
 
-**IGNORAR** (agregar a `processed_ids` igual para no revisarlos de nuevo):
+**IGNORAR** — recolectar sus messageIds en `ignored_ids` (se pasarán al script para no re-evaluar):
 - Encuestas, resúmenes de cuenta, vencimientos, alertas de seguridad, promociones, seguros (actualizaciones de cobertura)
 - "Tu pago fue anulado" — ignorar y también ignorar el pago original del mismo comercio/monto/fecha
 - Transferencias donde el beneficiario es el mismo Juan Pablo: CUIL **20339576786**, DNI **33957678**, nombre contiene "Ludue" o "Juan Pablo", o CBU conocido de Pablo
@@ -71,28 +80,33 @@ Para cada mensaje, si el `messageId` ya está en `processed_ids` → saltar sin 
 
 ## Paso 3 — Armar JSON con los registros
 
-Construir una lista de objetos con este formato:
+Construir un objeto con dos claves:
 
 ```json
-[
-  {
-    "msg_id": "19d7e588eab26583",
-    "purchase_date": "2026-04-11",
-    "description": "CP*FACTURAS CLARO",
-    "currency": "ARS",
-    "amount_original": 31416.08,
-    "installments_total": 1,
-    "first_installment_month": "2026-05",
-    "payment_method": "CARD",
-    "card_id": 1,
-    "owner_person_id": 1,
-    "category_concept": "servicios",
-    "is_refund": 0,
-    "debt_settled": 0,
-    "is_common": 0
-  }
-]
+{
+  "records": [
+    {
+      "msg_id": "19d7e588eab26583",
+      "purchase_date": "2026-04-11",
+      "description": "CP*FACTURAS CLARO",
+      "currency": "ARS",
+      "amount_original": 31416.08,
+      "installments_total": 1,
+      "first_installment_month": "2026-05",
+      "payment_method": "CARD",
+      "card_id": 1,
+      "owner_person_id": 1,
+      "category_concept": "servicios",
+      "is_refund": 0,
+      "debt_settled": 0,
+      "is_common": 0
+    }
+  ],
+  "ignored_ids": ["19dabc123", "19ddef456"]
+}
 ```
+
+`ignored_ids` contiene los messageIds de emails ignorados (no financieros) para que el script los registre y no los vuelva a evaluar en futuras corridas.
 
 ### Reglas de mapeo
 
@@ -105,7 +119,7 @@ Construir una lista de objetos con este formato:
 - `amount_original` = monto total (quitar puntos de miles, reemplazar coma por punto decimal)
 - `installments_total` = número de cuotas
 - `first_installment_month` = mes **siguiente** a purchase_date (YYYY-MM)
-- `owner_person_id` = 1 (Pablo); adicional 7550 → 2 (Cintia)
+- `owner_person_id` = según campo **"To"** del email: `luduenajp` → 1, `ciontiver10` → 2. Si es tarjeta adicional 7550 → siempre 2 (Cintia), independientemente del "To".
 - `category_concept` según descripción:
   - EPEC, AguasCordobesas, ECOGAS, Personal, Claro, PAGOS360* → `"servicios"`
   - SEGUROS RIVADAVIA, ADT, BINA SEGUROS, CHUBB, CHUBBTES → `"seguros"`
@@ -120,7 +134,7 @@ Construir una lista de objetos con este formato:
 - `card_id` = null, `payment_method` = "TRANSFER", `currency` = "ARS"
 - `installments_total` = 1
 - `first_installment_month` = **mismo mes** que purchase_date (YYYY-MM)
-- `owner_person_id` = 1
+- `owner_person_id` = según campo **"To"** del email: `luduenajp` → 1, `ciontiver10` → 2
 - `description`:
   - MP: "Transferencia MP a [Nombre beneficiario]"
   - Santander: "Transferencia Santander a CUIT [CUIT]"
@@ -136,9 +150,12 @@ Guardar el JSON en un archivo temporal y llamar al script:
 ```python
 import json, tempfile, subprocess, glob, os
 
+# Armar payload con records e ignored_ids
+payload = {"records": records, "ignored_ids": list(ignored_ids)}
+
 # Escribir JSON temporal
 tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8')
-json.dump(records, tmp, ensure_ascii=False)
+json.dump(payload, tmp, ensure_ascii=False)
 tmp.close()
 
 # Detectar path del proyecto

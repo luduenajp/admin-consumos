@@ -3,30 +3,33 @@
 gmail_import.py — Importa registros financieros extraídos de Gmail a app.db
 
 Uso:
-    python3 scripts/gmail_import.py <ruta_al_json_de_registros>
+    python3 scripts/gmail_import.py <ruta_al_json>
 
-El agente Claude lee los emails via MCP de Gmail, arma un JSON con los registros
-y llama a este script. Toda la lógica de DB, categorías y deduplicación vive aquí.
+El agente Claude lee los emails via MCP de Gmail, arma un JSON y llama a este
+script. Toda la lógica de DB, categorías y deduplicación vive aquí.
 
-Formato del JSON de entrada (lista de objetos):
-[
-  {
-    "msg_id": "19d7e588eab26583",
-    "purchase_date": "2026-04-11",
-    "description": "CP*FACTURAS CLARO",
-    "currency": "ARS",
-    "amount_original": 31416.08,
-    "installments_total": 1,
-    "payment_method": "CARD",       # CARD | TRANSFER | CASH
-    "card_id": 1,                   # null para transferencias
-    "owner_person_id": 1,
-    "category_concept": "servicios", # ver CATEGORY_KEYWORDS abajo
-    "is_refund": 0,
-    "debt_settled": 0,
-    "is_common": 0
-  },
-  ...
-]
+Formato del JSON de entrada:
+{
+  "records": [
+    {
+      "msg_id": "19d7e588eab26583",
+      "purchase_date": "2026-04-11",
+      "description": "CP*FACTURAS CLARO",
+      "currency": "ARS",
+      "amount_original": 31416.08,
+      "installments_total": 1,
+      "first_installment_month": "2026-05",
+      "payment_method": "CARD",       # CARD | TRANSFER | CASH
+      "card_id": 1,                   # null para transferencias
+      "owner_person_id": 1,
+      "category_concept": "servicios",
+      "is_refund": 0,
+      "debt_settled": 0,
+      "is_common": 0
+    }
+  ],
+  "ignored_ids": ["19dabc123", "19ddef456"]
+}
 """
 
 import sys
@@ -34,6 +37,7 @@ import os
 import json
 import glob
 import shutil
+import sqlite3
 import tempfile
 from datetime import datetime
 
@@ -46,16 +50,11 @@ def detect_db_path():
     mounts = glob.glob('/sessions/*/mnt/admin-consumos/data/app.db')
     if mounts:
         return mounts[0]
-    # Fallback: path real en el equipo del usuario
     return '/Users/pablo/github/admin-consumos/data/app.db'
 
 
 # ---------------------------------------------------------------------------
 # Mapeo de conceptos a categorías de la DB (case-insensitive)
-# Las claves son los valores que el agente debe usar en "category_concept".
-# Los valores son búsquedas lowercase contra los nombres reales de la DB.
-# Si la DB cambia el nombre de una categoría, solo hay que ajustar el valor
-# de la derecha (o el nombre en la DB ya matchea por substring igualmente).
 # ---------------------------------------------------------------------------
 
 CATEGORY_CONCEPTS = {
@@ -94,11 +93,9 @@ def resolve_category(concept, db_categories):
     """
     key = CATEGORY_CONCEPTS.get(concept, concept).lower()
 
-    # Match exacto
     if key in db_categories:
         return db_categories[key]
 
-    # Match por substring
     for db_key, db_name in db_categories.items():
         if key in db_key or db_key in key:
             print(f'  ⚠  categoría "{concept}" no encontrada exacta → usando "{db_name}" por similitud')
@@ -140,10 +137,19 @@ def main():
 
     json_path = sys.argv[1]
     with open(json_path, encoding='utf-8') as f:
-        records = json.load(f)
+        payload = json.load(f)
 
-    if not records:
-        print('Sin registros en el JSON. Nada para importar.')
+    # Soporta tanto el formato nuevo {"records": [...], "ignored_ids": [...]}
+    # como el formato antiguo (lista directa) por compatibilidad.
+    if isinstance(payload, list):
+        records = payload
+        ignored_ids = []
+    else:
+        records = payload.get('records', [])
+        ignored_ids = payload.get('ignored_ids', [])
+
+    if not records and not ignored_ids:
+        print('Sin registros ni IDs ignorados. Nada para procesar.')
         sys.exit(0)
 
     DB_PATH = detect_db_path()
@@ -153,6 +159,7 @@ def main():
     print(f'DB: {DB_PATH}')
     print(f'IDs procesados: {ID_FILE}')
     print(f'Registros a evaluar: {len(records)}')
+    print(f'IDs ignorados a registrar: {len(ignored_ids)}')
     print()
 
     # Cargar IDs ya procesados
@@ -162,10 +169,12 @@ def main():
     else:
         processed_ids = set()
 
+    # Todos los IDs vistos en esta corrida (records + ignorados)
+    all_reviewed_ids = set(ignored_ids)
+
     # Copiar DB a directorio temporal (evita problemas de escritura en mount FUSE)
     shutil.copy2(DB_PATH, WORK_DB)
 
-    import sqlite3
     conn = sqlite3.connect(WORK_DB, timeout=10)
     conn.execute('PRAGMA foreign_keys=ON')
     cur = conn.cursor()
@@ -175,13 +184,13 @@ def main():
     print(f'Categorías en DB: {sorted(db_categories.values())}')
     print()
 
-    # Crear import batch
+    # Crear import batch (card_id=NULL porque puede ser mixto cards/transfers)
     now = datetime.now().isoformat()
     label = f'Gmail - tarea programada {now[:16]}'
     cur.execute(
         '''INSERT INTO importbatch (imported_at, provider, source_file, card_id,
            statement_year_month, purchases_created, purchases_skipped, purchases_parsed)
-           VALUES (?, ?, ?, 1, ?, 0, 0, 0)''',
+           VALUES (?, ?, ?, NULL, ?, 0, 0, 0)''',
         (now, 'gmail', label, '2099-01')
     )
     batch_id = cur.lastrowid
@@ -189,101 +198,101 @@ def main():
     created = 0
     skipped_dup_id = 0
     skipped_dup_db = 0
-    inserted_records = []
-    all_reviewed_ids = set()
 
-    for rec in records:
-        msg_id = rec.get('msg_id', '')
-        all_reviewed_ids.add(msg_id)
+    try:
+        for rec in records:
+            msg_id = rec.get('msg_id', '')
+            all_reviewed_ids.add(msg_id)
 
-        # Skip si ya fue procesado
-        if msg_id in processed_ids:
-            print(f'  SKIP (ID ya procesado): {rec.get("description")}')
-            skipped_dup_id += 1
-            continue
+            # Skip si ya fue procesado
+            if msg_id in processed_ids:
+                print(f'  SKIP (ID ya procesado): {rec.get("description")}')
+                skipped_dup_id += 1
+                continue
 
-        date = rec['purchase_date']
-        desc = rec['description']
-        amount = float(rec['amount_original'])
-        installments = int(rec.get('installments_total', 1))
-        installment_amount = round(amount / installments, 2)
-        first_month = rec['first_installment_month']
-        payment_method = rec.get('payment_method', 'CARD')
-        card_id = rec.get('card_id')  # puede ser None
-        owner_person_id = int(rec.get('owner_person_id', 1))
-        currency = rec.get('currency', 'ARS')
-        is_refund = int(rec.get('is_refund', 0))
-        debt_settled = int(rec.get('debt_settled', 0))
-        is_common = int(rec.get('is_common', 0))
+            date = rec['purchase_date']
+            desc = rec['description']
+            amount = float(rec['amount_original'])
+            installments = int(rec.get('installments_total', 1))
+            installment_amount = round(amount / installments, 2)
+            first_month = rec.get('first_installment_month') or _default_first_month(date, rec.get('payment_method', 'CARD'))
+            payment_method = rec.get('payment_method', 'CARD')
+            card_id = rec.get('card_id')
+            owner_person_id = int(rec.get('owner_person_id', 1))
+            currency = rec.get('currency', 'ARS')
+            is_refund = int(rec.get('is_refund', 0))
+            debt_settled = int(rec.get('debt_settled', 0))
+            is_common = int(rec.get('is_common', 0))
 
-        # Resolver categoría dinámicamente
-        category_concept = rec.get('category_concept', 'varios')
-        category = resolve_category(category_concept, db_categories)
+            # Resolver categoría dinámicamente
+            category_concept = rec.get('category_concept', 'varios')
+            category = resolve_category(category_concept, db_categories)
 
-        # Deduplicación por DB
-        if is_duplicate(cur, date, desc, amount):
-            print(f'  SKIP (duplicado DB): {date} | {desc} | ${amount}')
-            skipped_dup_db += 1
-            continue
+            # Deduplicación por DB
+            if is_duplicate(cur, date, desc, amount):
+                print(f'  SKIP (duplicado DB): {date} | {desc} | ${amount}')
+                skipped_dup_db += 1
+                continue
 
-        # Insertar purchase
-        cur.execute(
-            '''INSERT INTO purchase
-               (card_id, payment_method, purchase_date, description, currency,
-                amount_original, installments_total, installment_amount_original,
-                first_installment_month, owner_person_id, category,
-                is_refund, debt_settled, is_common, import_batch_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (card_id, payment_method, date, desc, currency,
-             amount, installments, installment_amount,
-             first_month, owner_person_id, category,
-             is_refund, debt_settled, is_common, batch_id)
-        )
-        purchase_id = cur.lastrowid
-
-        # Insertar cuotas
-        for i in range(installments):
-            ym = add_months(first_month, i)
+            # Insertar purchase
             cur.execute(
-                '''INSERT INTO installmentschedule
-                   (purchase_id, year_month, installment_index, currency, amount_original)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (purchase_id, ym, i + 1, currency, installment_amount)
+                '''INSERT INTO purchase
+                   (card_id, payment_method, purchase_date, description, currency,
+                    amount_original, installments_total, installment_amount_original,
+                    first_installment_month, owner_person_id, category,
+                    is_refund, debt_settled, is_common, import_batch_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (card_id, payment_method, date, desc, currency,
+                 amount, installments, installment_amount,
+                 first_month, owner_person_id, category,
+                 is_refund, debt_settled, is_common, batch_id)
+            )
+            purchase_id = cur.lastrowid
+
+            # Insertar cuotas
+            for i in range(installments):
+                ym = add_months(first_month, i)
+                cur.execute(
+                    '''INSERT INTO installmentschedule
+                       (purchase_id, year_month, installment_index, currency, amount_original)
+                       VALUES (?, ?, ?, ?, ?)''',
+                    (purchase_id, ym, i + 1, currency, installment_amount)
+                )
+
+            # Insertar payer
+            cur.execute(
+                "INSERT INTO purchasepayer (purchase_id, person_id, share_type, share_value) VALUES (?, ?, 'PERCENT', 100.0)",
+                (purchase_id, owner_person_id)
             )
 
-        # Insertar payer
+            created += 1
+            print(f'  ✓ INSERTADO: {date} | {desc} | ${amount:,.2f} | {category or "sin categoría"} | persona={owner_person_id}')
+
+        # Actualizar batch
+        total = created + skipped_dup_db
         cur.execute(
-            "INSERT INTO purchasepayer (purchase_id, person_id, share_type, share_value) VALUES (?, ?, 'PERCENT', 100.0)",
-            (purchase_id, owner_person_id)
+            'UPDATE importbatch SET purchases_created=?, purchases_skipped=?, purchases_parsed=? WHERE id=?',
+            (created, skipped_dup_db, total, batch_id)
         )
 
-        created += 1
-        inserted_records.append(rec)
-        print(f'  ✓ INSERTADO: {date} | {desc} | ${amount:,.2f} | {category or "sin categoría"}')
+        conn.commit()
 
-    # Actualizar batch
-    total = created + skipped_dup_db
-    cur.execute(
-        'UPDATE importbatch SET purchases_created=?, purchases_skipped=?, purchases_parsed=? WHERE id=?',
-        (created, skipped_dup_db, total, batch_id)
-    )
+    finally:
+        conn.close()
 
-    conn.commit()
-    conn.close()
+        # Copiar DB de vuelta al mount (siempre, incluso si hubo error parcial)
+        shutil.copy2(WORK_DB, DB_PATH)
 
-    # Copiar DB de vuelta al mount
-    shutil.copy2(WORK_DB, DB_PATH)
+        # Limpiar journal si existe
+        journal = DB_PATH + '-journal'
+        if os.path.exists(journal):
+            with open(journal, 'wb') as f:
+                f.truncate(0)
 
-    # Limpiar journal si existe
-    journal = DB_PATH + '-journal'
-    if os.path.exists(journal):
-        with open(journal, 'wb') as f:
-            f.truncate(0)
-
-    # Guardar IDs procesados
-    processed_ids.update(all_reviewed_ids)
-    with open(ID_FILE, 'w', encoding='utf-8') as f:
-        json.dump(list(processed_ids), f, indent=2)
+        # Guardar IDs procesados (siempre, para no re-evaluar en la próxima corrida)
+        processed_ids.update(all_reviewed_ids)
+        with open(ID_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(processed_ids), f, indent=2)
 
     # Reporte final
     print()
@@ -291,10 +300,20 @@ def main():
     print(f'Nuevos registros insertados : {created}')
     print(f'Saltados (ID ya procesado)  : {skipped_dup_id}')
     print(f'Saltados (duplicado en DB)  : {skipped_dup_db}')
+    print(f'IDs ignorados registrados   : {len(ignored_ids)}')
     print(f'IDs guardados en archivo    : {len(processed_ids)}')
     if created == 0:
         print('Sin nuevos gastos para importar en esta corrida.')
     print('=' * 50)
+
+
+def _default_first_month(purchase_date, payment_method):
+    """Calcula first_installment_month si el agente lo omitió."""
+    y, m, _ = purchase_date.split('-')
+    ym = f'{y}-{m}'
+    if payment_method == 'TRANSFER':
+        return ym
+    return add_months(ym, 1)
 
 
 if __name__ == '__main__':
