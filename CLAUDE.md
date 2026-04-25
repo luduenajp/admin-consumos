@@ -68,9 +68,17 @@ See `.env.example` for reference.
 source ../.venv/bin/activate
 python -m pytest tests/ -q
 
+# Backend single test
+python -m pytest tests/test_crud_reports.py::test_report_month_breakdown -q
+
 # Frontend (desde frontend/)
 npm run test:run
+
+# Frontend single test file
+npm run test:run -- src/api/http.test.ts
 ```
+
+Frontend tests are **co-located** with source files (e.g. `src/api/http.test.ts`, `src/utils/dates.test.ts`). Framework: Vitest + jsdom + @testing-library, configured in `vitest.config.ts`.
 
 **Regla obligatoria:** Los tests deben correrse y pasar completamente antes de considerar cualquier cambio o feature como terminado. Un desarrollo está completo cuando:
 1. `python -m pytest tests/ -q` → todos los tests pasan (0 failed)
@@ -85,7 +93,14 @@ npm run test:run
 
 ## Architecture
 
-**Monorepo** with independent backend and frontend:
+**Monorepo** with independent backend and frontend.
+
+**Request/data flow:**
+1. Pages call typed API functions in `frontend/src/api/endpoints.ts`
+2. HTTP helpers in `frontend/src/api/http.ts` apply consistent fetch behavior (30s timeout, normalized error extraction)
+3. FastAPI routes in `api.py` / `import_api.py` expose `/api/*`
+4. Business logic lives in `crud.py`
+5. Persistence models in `models.py`; DB setup in `db.py`
 
 ### Backend (`backend/app/`)
 
@@ -94,8 +109,8 @@ npm run test:run
 | `main.py` | FastAPI app factory, CORS (configurable via env), router mounting, `init_db()` on startup |
 | `api.py` | REST endpoints — full CRUD for all entities; monthly reports (`GET /reports/month-breakdown`); categories; budgets; incomes; debt transfers; `calculate_transfers` (Fondo Común logic); `export_dashboard_to_excel`. `POST /cards` y `POST /purchases` capturan `ValueError` para FK validation (HTTP 400) |
 | `import_api.py` | File import endpoints (Visa XLSX, Visa/Mastercard PDF, Google Sheets CSV) |
-| `crud.py` | Business logic — atomic purchase creation (flush + single commit), FK existence validation, installment schedule generation, all report queries (`list_purchases` con person_id filter, `report_month_breakdown` desglose de cuotas por mes), `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
-| `models.py` | SQLModel ORM models (12 tables: Person, Card, Debtor, Category, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow, MonthlyBudget, Income, DebtTransfer) |
+| `crud.py` | Business logic — atomic purchase creation (flush + single commit), FK existence validation, installment schedule generation, all report queries (`list_purchases` con person_id filter, `report_month_breakdown` desglose de cuotas por mes), `calculate_transfers` (Fondo Común), `auto_categorize_purchases`, `detect_recurring_expenses`, `calculate_monthly_balance`, `export_dashboard_to_excel` |
+| `models.py` | SQLModel ORM models (16 tables: Person, Card, Debtor, Category, Purchase, PurchasePayer, InstallmentSchedule, FxRate, ImportedRow, ImportBatch, MonthlyBudget, Income, DebtTransfer, FamilyGoal, Saving, SavingSnapshot, SavingsExchangeRate) |
 | `schemas.py` | Pydantic schemas with `year_month` regex validation (`YYYY-MM`), `share_value > 0` constraint, and `model_validator` ensuring PERCENT payer shares sum to 100 |
 | `db.py` | SQLite engine with `PRAGMA foreign_keys=ON` enforcement, session context manager |
 | `config.py` | Environment-based configuration (DB_PATH, CORS_ORIGINS) with defaults |
@@ -120,7 +135,7 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 
 | Path | Role |
 |---|---|
-| `App.tsx` | React Router layout with 6 routes: `/`, `/purchases`, `/import`, `/budget`, `/categories`, `/admin`. Wraps routes in `ErrorBoundary` |
+| `App.tsx` | React Router layout with 8 routes: `/`, `/purchases`, `/import`, `/budget`, `/ahorros`, `/categories`, `/goals`, `/admin`. Wraps routes in `ErrorBoundary` |
 | `api/types.ts` | TypeScript interfaces matching backend schemas (read + create payloads) |
 | `api/http.ts` | Fetch wrappers with 30s timeout (`AbortController`) + `extractErrorMessage()` utility for parsing backend error payloads |
 | `api/endpoints.ts` | API client functions for all endpoints |
@@ -129,6 +144,8 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 | `pages/import-page.tsx` | Importación XLSX, PDF (Banco Nación, MercadoPago) o Google Sheets CSV. Campo de contraseña para PDF protegidos |
 | `pages/budget-page.tsx` | Gestión de ingresos por persona/mes y registro de transferencias realizadas (DebtTransfer) |
 | `pages/categories-page.tsx` | ABM de categorías con nombre y color |
+| `pages/goals-page.tsx` | ABM de objetivos familiares (`FamilyGoal`): título, monto objetivo, fecha límite, prioridad, completado. Usa `useState` directo (no React Query) |
+| `pages/savings-page.tsx` | Gestión de ahorros: cuentas (`Saving`), snapshots de saldo, `SavingsExchangeRate`, historial de totales (`fetchSavingsTotalHistory`) |
 | `pages/admin-page.tsx` | Entity management — create People, Cards, Debtors, FX Rates |
 | `components/TransferCalculationCard.tsx` | Muestra el resultado de `calculate_transfers` (Fondo Común) para un mes |
 | `components/MonthlyBalanceCard.tsx` | Resumen de balance mensual |
@@ -136,6 +153,15 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 | `components/CategoryChart.tsx` | Gráfico de gastos por categoría |
 | `components/PurchaseForm.tsx` | Formulario reutilizable para crear/editar compras |
 | `components/ConfirmDialog.tsx` | Modal de confirmación reutilizable para acciones destructivas |
+| `components/KpiSummary.tsx` | Tarjetas de KPIs en el dashboard (totales del mes, cuotas pendientes, etc.) |
+| `components/RecurringExpensesCard.tsx` | Muestra gastos recurrentes detectados por `detect_recurring_expenses` |
+| `components/PersonDistributionChart.tsx` | Gráfico de distribución de gastos por persona |
+| `components/MonthlyEvolutionChart.tsx` | Gráfico de evolución mensual de gastos |
+| `components/Spinner.tsx` | Loading spinner reutilizable |
+
+**Frontend utils** (`src/utils/`):
+- `dates.ts` — `getCurrentYearMonth()`, `getRelativeMonth(offset)` para navegar meses
+- `format.ts` — `formatCurrency()`, `formatSignedCurrency()` con locale `es-AR`
 
 Uses React Query (`@tanstack/react-query`) with configured defaults: `staleTime: 2min`, `gcTime: 10min`, `retry: 1`, `refetchOnWindowFocus: false`.
 
@@ -161,7 +187,7 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 - **FK validation**: `create_card` and `create_purchase` validate that referenced Person/Card IDs exist before creating, raising `ValueError` (caught as HTTP 400)
 - **Input validation**: `year_month` fields use regex `^\d{4}-(0[1-9]|1[0-2])$`; payer `share_value` must be `> 0`; PERCENT shares must sum to 100 (model_validator)
 - **Global error handlers** in `main.py`: `IntegrityError` → 409, `ValueError` → 400
-- **DB migrations**: `db.py:_migrate_add_columns()` runs on startup to add columns (`debtor_id`, `debt_settled`, `beneficiary_person_id`) to existing databases. Idempotent via `PRAGMA table_info` check.
+- **DB migrations**: `db.py:_migrate_add_columns()` runs on startup to add columns (`debtor_id`, `debt_settled`, `beneficiary_person_id`, `import_batch_id`) to existing databases. Idempotent via `PRAGMA table_info` check.
 - **Manual cascade delete**: `delete_purchase` uses raw SQL to delete children (installments, payers) before parent, because SQLModel doesn't emit `ON DELETE CASCADE` DDL. If new child tables are added, their DELETE must go here too.
 
 ## Key Domain Concepts
@@ -174,6 +200,8 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 - **FX rates**: USD→ARS exchange rates are entered manually per month via `/admin` page. If missing for a given month, USD installments are excluded from reports (not zero — omitted).
 - **Payment split / Transferencias**: El sistema utiliza una lógica de **Fondo Común** (Core Rule). Los ingresos se suman y los gastos comunes se pagan de ese pozo. El dinero sobrante se divide 50/50 entre los participantes. Las transferencias sugeridas buscan que, después de pagar sus gastos personales correspondientes, a ambos les quede exactamente la misma cantidad de "dinero libre" del pozo común. No cambiar esta lógica a menos que se pida explícitamente una re-arquitectura financiera.
 - **Deduplication**: Import creates SHA256 fingerprints per row (`ImportedRow`). Re-importing the same file skips already-imported rows.
+- **Savings**: `Saving` registra cuentas de ahorro por persona y moneda. `SavingSnapshot` guarda el saldo en una fecha determinada. `SavingsExchangeRate` es independiente de `FxRate` (solo para reportes de ahorros; permite cotizaciones distintas a las del dashboard). El total histórico se consulta vía `fetchSavingsTotalHistory`.
+- **Family Goals**: `FamilyGoal` almacena objetivos con título, monto target, fecha límite y prioridad (`low`/`medium`/`high`). No se vincula automáticamente a `Saving`.
 - **Exclusion heuristic**: Se excluyen pagos, promos, bonificaciones, impuestos (DB.RG 5617, IIBB PERCEP, Impuesto de sellos, Impuesto al sello), "Pago de tarjeta", "Resumen de [mes]". Sí se incluyen devoluciones por compra anulada.
 
 ### Importación Google Sheets
@@ -198,6 +226,11 @@ If an existing purchase is found, only the missing `InstallmentSchedule` entry i
 
 - **`./start.sh`**: Inicia backend y frontend en paralelo. Crea virtualenv si no existe, instala deps.
 - **`examples/validate_pdf.py`**: Valida formato de PDFs. Uso: \`python validate_pdf.py <archivo.pdf> [contraseña] [--debug]\`
+
+**Scripts de migración/limpieza en `backend/`** (solo para uso puntual, no son parte del flujo normal):
+- `deduplicate_purchases.py` — consolida duplicados de compras (mueve InstallmentSchedule, elimina duplicados)
+- `migrate_consolidate_purchases.py` — consolida compras multi-cuota duplicadas de importaciones
+- `clean_mp_imports.py` / `fix_mp_purchases.py` / `reimport_mp.py` — correcciones históricas de importaciones MercadoPago
 
 ## Core Financial Logic (Fondo Común)
 
