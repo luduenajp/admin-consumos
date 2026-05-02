@@ -126,7 +126,7 @@ Construir un objeto con dos claves:
 - `currency` = "ARS"; si dice "U$S" → "USD"
 - `amount_original` = monto total (quitar puntos de miles, reemplazar coma por punto decimal)
 - `installments_total` = número de cuotas
-- `first_installment_month` = mes **siguiente** a purchase_date (YYYY-MM)
+- `first_installment_month` = `suggest_first_installment_month(cur, card_id, purchase_date)` — usa la tabla `cardstatement` si hay datos; fallback al mes siguiente
 - `owner_person_id` = según campo **"To"** del email: `luduenajp` → 1, `ciontiver10` → 2. Si es tarjeta adicional 7550 → siempre 2 (Cintia), independientemente del "To".
 - `category_concept` según descripción:
   - EPEC, AguasCordobesas, ECOGAS, Personal, Claro, PAGOS360* → `"servicios"`
@@ -203,3 +203,25 @@ Mostrar la salida del script tal cual. El script ya imprime:
 **Tarjetas:** id=1 Visa Pablo Santander 5623, id=2 Visa Nación Cintia, id=3 Master Nación Cintia
 **Script:** `scripts/gmail_import.py` (en la raíz del proyecto)
 **Categorías:** el script las carga dinámicamente desde la DB — no hardcodear nombres
+**Tabla cardstatement:** `card_id, year_month (YYYY-MM), closing_date (DATE), due_date (DATE nullable)` — usar para calcular `first_installment_month`:
+
+```python
+def suggest_first_installment_month(cur, card_id, purchase_date_str):
+    """Usa CardStatement para calcular el mes correcto. Fallback: mes siguiente."""
+    cur.execute(
+        '''SELECT year_month FROM cardstatement
+           WHERE card_id=? AND closing_date >= ?
+           ORDER BY closing_date ASC LIMIT 1''',
+        (card_id, purchase_date_str)
+    )
+    row = cur.fetchone()
+    if row:
+        return row[0]
+    # Fallback: mes siguiente
+    y, m = map(int, purchase_date_str[:7].split('-'))
+    m += 1
+    if m > 12:
+        m = 1
+        y += 1
+    return f'{y:04d}-{m:02d}'
+```

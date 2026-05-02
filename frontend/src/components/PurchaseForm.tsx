@@ -6,9 +6,10 @@ import {
     fetchDebtors,
     fetchCategories,
     createPurchase,
+    fetchSuggestMonth,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category } from '../api/types'
+import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMonthResponse } from '../api/types'
 import { getRelativeMonth } from '../utils/dates'
 
 interface PurchaseFormProps {
@@ -43,6 +44,19 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
     const { data: cards = [] } = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
     const { data: debtors = [] } = useQuery({ queryKey: ['debtors'], queryFn: fetchDebtors })
     const { data: categories = [] } = useQuery<Category[]>({ queryKey: ['categories'], queryFn: fetchCategories })
+
+    const suggestQuery = useQuery<SuggestMonthResponse>({
+        queryKey: ['suggest-month', formData.card_id, formData.purchase_date],
+        queryFn: () => fetchSuggestMonth(Number(formData.card_id), formData.purchase_date),
+        enabled: formData.payment_method === 'card' && !!formData.card_id,
+        staleTime: 0,
+    })
+
+    useEffect(() => {
+        if (suggestQuery.data) {
+            setFormData(prev => ({ ...prev, first_installment_month: suggestQuery.data!.year_month }))
+        }
+    }, [suggestQuery.data?.year_month])
 
     // Update default first_installment_month when payment_method changes
     useEffect(() => {
@@ -306,6 +320,16 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                         onChange={(e) => setFormData({ ...formData, first_installment_month: e.target.value })}
                         style={{ opacity: formData.payment_method === 'card' ? 1 : 0.5 }}
                     />
+                    {formData.payment_method === 'card' && formData.card_id && (
+                        <div className="hint">
+                            {suggestQuery.isLoading
+                                ? 'Calculando...'
+                                : suggestQuery.data?.fallback
+                                    ? 'Sin datos de cierre — asumiendo mes siguiente'
+                                    : `Cierre ${suggestQuery.data?.closing_date} → entra en ${suggestQuery.data?.year_month}`
+                            }
+                        </div>
+                    )}
                 </div>
 
                 <div className="formRow">

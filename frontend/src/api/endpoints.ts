@@ -39,6 +39,9 @@ import type {
   SavingsExchangeRate,
   SavingsExchangeRateCreate,
   SavingsTotalHistoryPoint,
+  CardStatement,
+  CardStatementCreate,
+  SuggestMonthResponse,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -356,4 +359,22 @@ export function createSavingsExchangeRate(
 
 export function fetchSavingsTotalHistory(): Promise<SavingsTotalHistoryPoint[]> {
   return getJson<SavingsTotalHistoryPoint[]>('/api/savings/total-history')
+}
+
+export function fetchCardStatements(cardId: number): Promise<CardStatement[]> {
+  return getJson<CardStatement[]>(`/api/card-statements?card_id=${cardId}`)
+}
+
+export function upsertCardStatement(payload: CardStatementCreate): Promise<CardStatement> {
+  return postJson<CardStatement>('/api/card-statements', payload)
+}
+
+export function deleteCardStatement(id: number): Promise<void> {
+  return deleteHttp(`/api/card-statements/${id}`)
+}
+
+export function fetchSuggestMonth(cardId: number, purchaseDate: string): Promise<SuggestMonthResponse> {
+  return getJson<SuggestMonthResponse>(
+    `/api/card-statements/suggest-month?card_id=${cardId}&purchase_date=${purchaseDate}`
+  )
 }

@@ -455,3 +455,24 @@ class SavingsTotalHistoryPoint(BaseModel):
     total_usd: float
     total_in_ars: float | None
     total_in_usd: float | None
+
+
+class CardStatementCreate(BaseModel):
+    card_id: int
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    closing_date: date
+    due_date: Optional[date] = None
+
+
+class CardStatementRead(BaseModel):
+    id: int
+    card_id: int
+    year_month: str
+    closing_date: date
+    due_date: Optional[date] = None
+
+
+class SuggestMonthResponse(BaseModel):
+    year_month: str
+    closing_date: Optional[date] = None
+    fallback: bool

@@ -389,3 +389,24 @@ export interface SavingsTotalHistoryPoint {
   total_in_ars: number | null
   total_in_usd: number | null
 }
+
+export interface CardStatement {
+  id: number
+  card_id: number
+  year_month: string
+  closing_date: string
+  due_date?: string | null
+}
+
+export interface CardStatementCreate {
+  card_id: number
+  year_month: string
+  closing_date: string
+  due_date?: string | null
+}
+
+export interface SuggestMonthResponse {
+  year_month: string
+  closing_date: string | null
+  fallback: boolean
+}

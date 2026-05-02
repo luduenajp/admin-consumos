@@ -6,13 +6,16 @@ import {
   createDebtor,
   createPerson,
   fetchCards,
+  fetchCardStatements,
+  upsertCardStatement,
+  deleteCardStatement,
   fetchDebtors,
   fetchFxRates,
   fetchPeople,
   upsertFxRate,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode } from '../api/types'
+import type { CardStatementCreate, CurrencyCode } from '../api/types'
 
 /* ------------------------------------------------------------------ */
 /*  People                                                             */
@@ -392,6 +395,153 @@ function DebtorsSection() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Card Statements                                                    */
+/* ------------------------------------------------------------------ */
+
+function CardStatementsSection() {
+  const queryClient = useQueryClient()
+  const [selectedCardId, setSelectedCardId] = useState<string>('')
+  const [form, setForm] = useState({ year_month: '', closing_date: '', due_date: '' })
+  const [error, setError] = useState('')
+
+  const cardsQuery = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
+  const cards = cardsQuery.data ?? []
+
+  const statementsQuery = useQuery({
+    queryKey: ['card-statements', selectedCardId],
+    queryFn: () => fetchCardStatements(Number(selectedCardId)),
+    enabled: !!selectedCardId,
+  })
+  const statements = statementsQuery.data ?? []
+
+  const upsertMutation = useMutation({
+    mutationFn: (payload: CardStatementCreate) => upsertCardStatement(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['card-statements', selectedCardId] })
+      setForm({ year_month: '', closing_date: '', due_date: '' })
+      setError('')
+    },
+    onError: (e) => setError(extractErrorMessage(e)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteCardStatement(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card-statements', selectedCardId] }),
+  })
+
+  const handleSubmit = () => {
+    if (!selectedCardId || !form.year_month || !form.closing_date) {
+      setError('Tarjeta, mes y fecha de cierre son obligatorios')
+      return
+    }
+    upsertMutation.mutate({
+      card_id: Number(selectedCardId),
+      year_month: form.year_month,
+      closing_date: form.closing_date,
+      due_date: form.due_date || null,
+    })
+  }
+
+  return (
+    <div className="panel">
+      <div className="panelTitle">Fechas de Resumen por Tarjeta</div>
+
+      <div className="formRow">
+        <label className="label">Tarjeta</label>
+        <select
+          className="input"
+          value={selectedCardId}
+          onChange={(e) => setSelectedCardId(e.target.value)}
+        >
+          <option value="">Seleccionar tarjeta...</option>
+          {cards.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {selectedCardId && (
+        <>
+          {statements.length === 0 ? (
+            <div className="muted" style={{ marginBottom: '16px' }}>Sin fechas cargadas para esta tarjeta</div>
+          ) : (
+            <table className="table" style={{ marginBottom: '16px' }}>
+              <thead>
+                <tr>
+                  <th>Mes</th>
+                  <th>Cierre</th>
+                  <th>Vencimiento</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {statements.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.year_month}</td>
+                    <td>{s.closing_date}</td>
+                    <td>{s.due_date ?? '—'}</td>
+                    <td>
+                      <button
+                        className="button"
+                        style={{ background: '#dc2626', padding: '4px 10px', fontSize: '12px' }}
+                        onClick={() => deleteMutation.mutate(s.id)}
+                        type="button"
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="formRow" style={{ flex: 1, minWidth: '120px', marginBottom: 0 }}>
+              <label className="label">Mes (YYYY-MM)</label>
+              <input
+                type="month"
+                className="input"
+                value={form.year_month}
+                onChange={(e) => setForm({ ...form, year_month: e.target.value })}
+              />
+            </div>
+            <div className="formRow" style={{ flex: 1, minWidth: '140px', marginBottom: 0 }}>
+              <label className="label">Fecha de Cierre</label>
+              <input
+                type="date"
+                className="input"
+                value={form.closing_date}
+                onChange={(e) => setForm({ ...form, closing_date: e.target.value })}
+              />
+            </div>
+            <div className="formRow" style={{ flex: 1, minWidth: '140px', marginBottom: 0 }}>
+              <label className="label">Vencimiento (opcional)</label>
+              <input
+                type="date"
+                className="input"
+                value={form.due_date}
+                onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+              />
+            </div>
+            <button
+              className="button"
+              style={{ height: '42px' }}
+              disabled={upsertMutation.isPending}
+              onClick={handleSubmit}
+              type="button"
+            >
+              Guardar
+            </button>
+          </div>
+          {error && <div className="error" style={{ marginTop: '8px' }}>{error}</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Admin Page                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -403,6 +553,7 @@ export function AdminPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px' }}>
         <PeopleSection />
         <CardsSection />
+        <CardStatementsSection />
         <DebtorsSection />
         <FxRatesSection />
       </div>

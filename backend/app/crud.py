@@ -10,6 +10,7 @@ from sqlmodel import Session, col, func, select
 from app import schemas
 from app.models import (
     Card,
+    CardStatement,
     Category,
     CurrencyCode,
     Debtor,
@@ -45,6 +46,7 @@ from app.schemas import (
     SavingCreate,
     SavingUpdate,
     SavingSnapshotCreate,
+    CardStatementCreate,
     SavingsExchangeRateCreate,
     SavingsTotalHistoryPoint,
 )
@@ -1895,3 +1897,79 @@ def get_savings_total_history(*, session: Session) -> list[SavingsTotalHistoryPo
         )
 
     return result
+
+
+# --- CardStatement CRUD ---
+
+def upsert_card_statement(
+    *, session: Session, payload: CardStatementCreate
+) -> CardStatement:
+    existing = session.exec(
+        select(CardStatement).where(
+            CardStatement.card_id == payload.card_id,
+            CardStatement.year_month == payload.year_month,
+        )
+    ).first()
+
+    if existing:
+        existing.closing_date = payload.closing_date
+        existing.due_date = payload.due_date
+        session.add(existing)
+    else:
+        existing = CardStatement(
+            card_id=payload.card_id,
+            year_month=payload.year_month,
+            closing_date=payload.closing_date,
+            due_date=payload.due_date,
+        )
+        session.add(existing)
+
+    session.commit()
+    session.refresh(existing)
+    return existing
+
+
+def list_card_statements(*, session: Session, card_id: int) -> list[CardStatement]:
+    return list(
+        session.exec(
+            select(CardStatement)
+            .where(CardStatement.card_id == card_id)
+            .order_by(CardStatement.year_month)
+        )
+    )
+
+
+def delete_card_statement(*, session: Session, statement_id: int) -> None:
+    record = session.get(CardStatement, statement_id)
+    if not record:
+        raise ValueError(f"CardStatement {statement_id} not found")
+    session.delete(record)
+    session.commit()
+
+
+def suggest_first_installment_month(
+    *, session: Session, card_id: int, purchase_date: date
+) -> tuple[str, date | None, bool]:
+    """Returns (year_month, closing_date_or_none, is_fallback).
+    Finds the nearest CardStatement with closing_date >= purchase_date.
+    Falls back to next month if no record exists.
+    """
+    record = session.exec(
+        select(CardStatement)
+        .where(
+            CardStatement.card_id == card_id,
+            CardStatement.closing_date >= purchase_date,
+        )
+        .order_by(CardStatement.closing_date)
+    ).first()
+
+    if record:
+        return record.year_month, record.closing_date, False
+
+    # Fallback: next calendar month
+    y, m = purchase_date.year, purchase_date.month
+    m += 1
+    if m > 12:
+        m = 1
+        y += 1
+    return f"{y:04d}-{m:02d}", None, True

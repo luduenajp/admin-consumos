@@ -60,6 +60,10 @@ from app.crud import (
     delete_purchase,
     update_purchase,
     upsert_fx_rate,
+    delete_card_statement,
+    list_card_statements,
+    suggest_first_installment_month,
+    upsert_card_statement,
 )
 from app.db import get_session
 from app.models import Category, Person, PurchasePayer
@@ -107,6 +111,9 @@ from app.schemas import (
     SavingsExchangeRateCreate,
     SavingsExchangeRateRead,
     SavingsTotalHistoryPoint,
+    CardStatementCreate,
+    CardStatementRead,
+    SuggestMonthResponse,
 )
 
 router = APIRouter()
@@ -878,3 +885,36 @@ def get_savings_exchange_rates() -> list[SavingsExchangeRateRead]:
 def post_savings_exchange_rate(payload: SavingsExchangeRateCreate) -> SavingsExchangeRateRead:
     with get_session() as session:
         return create_savings_exchange_rate(session=session, payload=payload)
+
+
+# --- Card Statements ---
+
+@router.get("/card-statements/suggest-month", response_model=SuggestMonthResponse)
+def get_suggest_month(card_id: int, purchase_date: date) -> SuggestMonthResponse:
+    with get_session() as session:
+        ym, closing, fallback = suggest_first_installment_month(
+            session=session, card_id=card_id, purchase_date=purchase_date
+        )
+        return SuggestMonthResponse(year_month=ym, closing_date=closing, fallback=fallback)
+
+
+@router.get("/card-statements", response_model=list[CardStatementRead])
+def get_card_statements(card_id: int) -> list[CardStatementRead]:
+    with get_session() as session:
+        return list_card_statements(session=session, card_id=card_id)
+
+
+@router.post("/card-statements", response_model=CardStatementRead)
+def post_card_statement(payload: CardStatementCreate) -> CardStatementRead:
+    with get_session() as session:
+        return upsert_card_statement(session=session, payload=payload)
+
+
+@router.delete("/card-statements/{statement_id}", status_code=204)
+def del_card_statement(statement_id: int) -> Response:
+    with get_session() as session:
+        try:
+            delete_card_statement(session=session, statement_id=statement_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return Response(status_code=204)
