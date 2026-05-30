@@ -46,6 +46,12 @@ def test_api_correct_credentials_pass(auth_client):
     assert r.status_code == 200
 
 
+def test_api_malformed_auth_returns_401(auth_client):
+    """Non-Basic schemes should be rejected."""
+    r = auth_client.get("/api/people", headers={"Authorization": "Bearer sometoken"})
+    assert r.status_code == 401
+
+
 def test_no_auth_config_allows_all(client):
     """When APP_USERNAME is not set, middleware does not enforce auth."""
     r = client.get("/api/people")

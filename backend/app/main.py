@@ -33,6 +33,8 @@ def create_app() -> FastAPI:
             auth_header = request.headers.get("Authorization", "")
             try:
                 scheme, credentials = auth_header.split(" ", 1)
+                if scheme.lower() != "basic":
+                    raise ValueError("not basic")
                 decoded = base64.b64decode(credentials).decode("utf-8")
                 req_user, req_pass = decoded.split(":", 1)
             except Exception:
