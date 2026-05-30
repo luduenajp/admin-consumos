@@ -126,6 +126,51 @@ def is_duplicate(cur, date, desc, amount):
     return cur.fetchone() is not None
 
 
+def _payer_for_record(rec: dict) -> int:
+    """Returns person_id of who pays (card owner, not consumer)."""
+    card_id = rec.get("card_id")
+    if card_id == 1:
+        return 1
+    if card_id in (2, 3):
+        return 2
+    return int(rec.get("owner_person_id", 1))
+
+
+def _build_api_payload(rec: dict) -> dict:
+    """Build PurchaseCreate-compatible payload from a gmail record."""
+    amount = float(rec["amount_original"])
+    installments = int(rec.get("installments_total", 1))
+    payer_person_id = _payer_for_record(rec)
+    return {
+        "card_id": rec.get("card_id"),
+        "payment_method": rec.get("payment_method", "CARD"),
+        "purchase_date": rec["purchase_date"],
+        "description": rec["description"],
+        "currency": rec.get("currency", "ARS"),
+        "amount_original": amount,
+        "installments_total": installments,
+        "first_installment_month": rec.get("first_installment_month"),
+        "owner_person_id": int(rec.get("owner_person_id", 1)),
+        "category": rec.get("category_concept"),
+        "is_refund": bool(rec.get("is_refund", 0)),
+        "is_common": bool(rec.get("is_common", 0)),
+        "payers": [{"person_id": payer_person_id, "share_type": "PERCENT", "share_value": 100.0}],
+    }
+
+
+def insert_via_api(rec: dict, railway_url: str, auth: tuple) -> bool:
+    """POST purchase to Railway API. Returns True if created, False if duplicate (409)."""
+    import requests as req_lib
+    payload = _build_api_payload(rec)
+    resp = req_lib.post(f"{railway_url}/api/purchases", json=payload, auth=auth, timeout=15)
+    if resp.status_code == 201:
+        return True
+    if resp.status_code == 409:
+        return False
+    resp.raise_for_status()
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -139,8 +184,6 @@ def main():
     with open(json_path, encoding='utf-8') as f:
         payload = json.load(f)
 
-    # Soporta tanto el formato nuevo {"records": [...], "ignored_ids": [...]}
-    # como el formato antiguo (lista directa) por compatibilidad.
     if isinstance(payload, list):
         records = payload
         ignored_ids = []
@@ -152,6 +195,14 @@ def main():
         print('Sin registros ni IDs ignorados. Nada para procesar.')
         sys.exit(0)
 
+    railway_url = os.environ.get('RAILWAY_URL', '').rstrip('/')
+    if railway_url:
+        _run_railway_mode(records, ignored_ids, railway_url)
+    else:
+        _run_local_mode(records, ignored_ids)
+
+
+def _run_local_mode(records: list, ignored_ids: list) -> None:
     DB_PATH = detect_db_path()
     ID_FILE = os.path.join(os.path.dirname(DB_PATH), 'gmail_processed_ids.json')
     WORK_DB = os.path.join(tempfile.gettempdir(), 'admin_consumos_work.db')
@@ -312,6 +363,62 @@ def main():
     print(f'IDs guardados en archivo    : {len(processed_ids)}')
     if created == 0:
         print('Sin nuevos gastos para importar en esta corrida.')
+    print('=' * 50)
+
+
+def _run_railway_mode(records: list, ignored_ids: list, railway_url: str) -> None:
+    username = os.environ.get('APP_USERNAME', '')
+    password = os.environ.get('APP_PASSWORD', '')
+    auth = (username, password)
+
+    DB_PATH = detect_db_path()
+    ID_FILE = os.path.join(os.path.dirname(DB_PATH), 'gmail_processed_ids.json')
+
+    if os.path.exists(ID_FILE):
+        with open(ID_FILE, encoding='utf-8') as f:
+            processed_ids = set(json.load(f))
+    else:
+        processed_ids = set()
+
+    all_reviewed_ids = set(ignored_ids)
+    created = 0
+    skipped = 0
+
+    print(f'Railway mode: {railway_url}')
+    print(f'Registros a evaluar: {len(records)}')
+    print()
+
+    for rec in records:
+        msg_id = rec.get('msg_id', '')
+        all_reviewed_ids.add(msg_id)
+
+        if msg_id in processed_ids:
+            print(f'  SKIP (ID ya procesado): {rec.get("description")}')
+            skipped += 1
+            continue
+
+        try:
+            ok = insert_via_api(rec, railway_url, auth)
+        except Exception as e:
+            print(f'  ERROR al insertar {rec.get("description")}: {e}')
+            continue
+
+        if ok:
+            created += 1
+            print(f'  ✓ INSERTADO: {rec["purchase_date"]} | {rec["description"]} | ${float(rec["amount_original"]):,.2f}')
+        else:
+            skipped += 1
+            print(f'  SKIP (duplicado API): {rec["purchase_date"]} | {rec["description"]}')
+
+    processed_ids.update(all_reviewed_ids)
+    with open(ID_FILE, 'w', encoding='utf-8') as f:
+        json.dump(list(processed_ids), f, indent=2)
+
+    print()
+    print('=' * 50)
+    print(f'Nuevos registros insertados : {created}')
+    print(f'Saltados                    : {skipped}')
+    print(f'IDs guardados en archivo    : {len(processed_ids)}')
     print('=' * 50)
 
 
