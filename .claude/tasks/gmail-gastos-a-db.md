@@ -207,21 +207,33 @@ Mostrar la salida del script tal cual. El script ya imprime:
 
 ```python
 def suggest_first_installment_month(cur, card_id, purchase_date_str):
-    """Usa CardStatement para calcular el mes correcto. Fallback: mes siguiente."""
+    """Usa CardStatement para calcular el mes correcto. Fallback: 2 meses adelante.
+    
+    Regla: compras en el día de cierre (o después) pasan al resumen siguiente.
+    El first_installment_month es el mes del due_date (mes en que se paga).
+    """
     cur.execute(
-        '''SELECT year_month FROM cardstatement
-           WHERE card_id=? AND closing_date >= ?
+        '''SELECT year_month, due_date FROM cardstatement
+           WHERE card_id=? AND closing_date > ?
            ORDER BY closing_date ASC LIMIT 1''',
         (card_id, purchase_date_str)
     )
     row = cur.fetchone()
     if row:
-        return row[0]
-    # Fallback: mes siguiente
+        year_month, due_date = row[0], row[1]
+        if due_date:
+            return due_date[:7]  # mes del vencimiento: YYYY-MM
+        # due_date no cargado: mes siguiente al year_month del resumen
+        y, m = map(int, year_month.split('-'))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+        return f'{y:04d}-{m:02d}'
+    # Fallback: 2 meses adelante (compra fuera del rango de resúmenes conocidos)
     y, m = map(int, purchase_date_str[:7].split('-'))
-    m += 1
+    m += 2
     if m > 12:
-        m = 1
+        m -= 12
         y += 1
     return f'{y:04d}-{m:02d}'
 ```

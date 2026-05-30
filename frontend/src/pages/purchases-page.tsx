@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -82,6 +82,7 @@ export function PurchasesPage() {
   const [endDate, setEndDate] = useState<string>('')
   const [minAmount, setMinAmount] = useState<string>('')
   const [maxAmount, setMaxAmount] = useState<string>('')
+  const [descriptionInput, setDescriptionInput] = useState<string>('')
   const [descriptionSearch, setDescriptionSearch] = useState<string>('')
   const [debtorFilter, setDebtorFilter] = useState<string>('')
   const [personFilter, setPersonFilter] = useState<string>('')
@@ -90,6 +91,14 @@ export function PurchasesPage() {
   const [page, setPage] = useState(1)
 
   const queryClient = useQueryClient()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDescriptionSearch(descriptionInput)
+      setPage(1)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [descriptionInput])
 
   // Build filters object (include pagination)
   const filters = {
@@ -199,6 +208,7 @@ export function PurchasesPage() {
     setEndDate('')
     setMinAmount('')
     setMaxAmount('')
+    setDescriptionInput('')
     setDescriptionSearch('')
     setDebtorFilter('')
     setPersonFilter('')
@@ -304,6 +314,10 @@ export function PurchasesPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="formRow" style={{ marginBottom: 0 }}>
+            <label className="label">Buscar</label>
+            <input type="text" className="input" style={{ width: '220px' }} placeholder="Descripción o detalle..." value={descriptionInput} onChange={(e) => setDescriptionInput(e.target.value)} />
+          </div>
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Desde</label>
             <input type="date" className="input" style={{ width: '150px' }} value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />

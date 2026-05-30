@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import case, text
+from sqlalchemy import case, or_, text
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, col, func, select
 
@@ -489,9 +489,14 @@ def list_purchases(
     if max_amount is not None:
         stmt = stmt.where(Purchase.amount_original <= max_amount)
 
-    # Description search (case-insensitive)
+    # Description/notes search (case-insensitive, matches either field)
     if description_search:
-        stmt = stmt.where(col(Purchase.description).contains(description_search))
+        stmt = stmt.where(
+            or_(
+                col(Purchase.description).contains(description_search),
+                col(Purchase.notes).contains(description_search),
+            )
+        )
 
     # Import batch filter
     if import_batch_id is not None:
