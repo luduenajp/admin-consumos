@@ -26,3 +26,7 @@ def get_cors_origins() -> list[str]:
     if env_origins:
         return [o.strip() for o in env_origins.split(",")]
     return ["http://localhost:5173", "http://localhost:4173", "http://192.168.68.105:4173", "http://www.consumofamiliar.com:4173"]
+
+
+def get_auth_credentials() -> tuple[str, str]:
+    return os.environ.get("APP_USERNAME", ""), os.environ.get("APP_PASSWORD", "")
