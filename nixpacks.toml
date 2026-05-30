@@ -1,1 +1,4 @@
 providers = ["python", "node"]
+
+[phases.build]
+cmds = ["python3 -m pip install -r backend/requirements.txt", "cd frontend && npm install && npm run build"]
