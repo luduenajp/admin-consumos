@@ -126,7 +126,7 @@ Construir un objeto con dos claves:
 - `currency` = "ARS"; si dice "U$S" → "USD"
 - `amount_original` = monto total (quitar puntos de miles, reemplazar coma por punto decimal)
 - `installments_total` = número de cuotas
-- `first_installment_month` = `suggest_first_installment_month(cur, card_id, purchase_date)` — usa la tabla `cardstatement` si hay datos; fallback al mes siguiente
+- `first_installment_month` = `suggest_first_installment_month(card_id, purchase_date)` — llama a Railway API; fallback al mes siguiente
 - `owner_person_id` = según campo **"To"** del email: `luduenajp` → 1, `ciontiver10` → 2. Si es tarjeta adicional 7550 → siempre 2 (Cintia), independientemente del "To".
 - `category_concept` según descripción:
   - EPEC, AguasCordobesas, ECOGAS, Personal, Claro, PAGOS360* → `"servicios"`
@@ -203,37 +203,43 @@ Mostrar la salida del script tal cual. El script ya imprime:
 **Tarjetas:** id=1 Visa Pablo Santander 5623, id=2 Visa Nación Cintia, id=3 Master Nación Cintia
 **Script:** `scripts/gmail_import.py` (en la raíz del proyecto)
 **Categorías:** el script las carga dinámicamente desde la DB — no hardcodear nombres
-**Tabla cardstatement:** `card_id, year_month (YYYY-MM), closing_date (DATE), due_date (DATE nullable)` — usar para calcular `first_installment_month`:
+**Tabla cardstatement:** `card_id, year_month (YYYY-MM), closing_date (DATE), due_date (DATE nullable)` — disponible vía Railway API (`/api/card-statements/suggest-month`):
 
 ```python
-def suggest_first_installment_month(cur, card_id, purchase_date_str):
-    """Usa CardStatement para calcular el mes correcto. Fallback: 2 meses adelante.
-    
-    Regla: compras en el día de cierre (o después) pasan al resumen siguiente.
-    El first_installment_month es el mes del due_date (mes en que se paga).
+def suggest_first_installment_month(card_id, purchase_date_str):
+    """Calls Railway API to get the correct first_installment_month.
+    Falls back to next month for CARD, same month for TRANSFER.
     """
-    cur.execute(
-        '''SELECT year_month, due_date FROM cardstatement
-           WHERE card_id=? AND closing_date > ?
-           ORDER BY closing_date ASC LIMIT 1''',
-        (card_id, purchase_date_str)
-    )
-    row = cur.fetchone()
-    if row:
-        year_month, due_date = row[0], row[1]
-        if due_date:
-            return due_date[:7]  # mes del vencimiento: YYYY-MM
-        # due_date no cargado: mes siguiente al year_month del resumen
-        y, m = map(int, year_month.split('-'))
-        m += 1
-        if m > 12:
-            m, y = 1, y + 1
-        return f'{y:04d}-{m:02d}'
-    # Fallback: 2 meses adelante (compra fuera del rango de resúmenes conocidos)
+    import requests, os
+    railway_url = os.environ.get('RAILWAY_URL', '').rstrip('/')
+    username = os.environ.get('APP_USERNAME', '')
+    password = os.environ.get('APP_PASSWORD', '')
+    if railway_url and card_id:
+        try:
+            resp = requests.get(
+                f'{railway_url}/api/card-statements/suggest-month',
+                params={'card_id': card_id, 'purchase_date': purchase_date_str},
+                auth=(username, password),
+                timeout=10,
+            )
+            if resp.ok:
+                return resp.json()['year_month']
+        except Exception:
+            pass
+    # Fallback: next month for cards
     y, m = map(int, purchase_date_str[:7].split('-'))
-    m += 2
+    m += 1
     if m > 12:
-        m -= 12
-        y += 1
+        m, y = 1, y + 1
     return f'{y:04d}-{m:02d}'
 ```
+
+---
+
+## Variables de entorno requeridas (Cowork)
+
+| Variable | Descripción |
+|---|---|
+| `RAILWAY_URL` | URL del servicio en Railway, ej: `https://admin-consumos-xxxx.up.railway.app` |
+| `APP_USERNAME` | Usuario de Basic Auth configurado en Railway |
+| `APP_PASSWORD` | Contraseña de Basic Auth configurada en Railway |
