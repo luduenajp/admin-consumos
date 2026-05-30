@@ -17,4 +17,4 @@ COPY . .
 RUN cd frontend && npm run build
 
 WORKDIR /app/backend
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
+CMD ["python", "start_server.py"]
