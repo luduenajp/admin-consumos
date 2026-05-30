@@ -171,6 +171,18 @@ def insert_via_api(rec: dict, railway_url: str, auth: tuple) -> bool:
     return False
 
 
+def _load_railway_categories(railway_url: str, auth: tuple) -> dict:
+    """Fetches categories from Railway API. Returns {name_lower: name_exact}."""
+    import requests as req_lib
+    try:
+        resp = req_lib.get(f"{railway_url}/api/categories", auth=auth, timeout=10)
+        resp.raise_for_status()
+        return {cat["name"].lower(): cat["name"] for cat in resp.json()}
+    except Exception as e:
+        print(f'  ⚠  No se pudieron cargar categorías desde Railway: {e}')
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -388,6 +400,9 @@ def _run_railway_mode(records: list, ignored_ids: list, railway_url: str) -> Non
     print(f'Registros a evaluar: {len(records)}')
     print()
 
+    # Cargar categorías desde Railway API
+    db_categories = _load_railway_categories(railway_url, auth)
+
     for rec in records:
         msg_id = rec.get('msg_id', '')
         all_reviewed_ids.add(msg_id)
@@ -397,8 +412,13 @@ def _run_railway_mode(records: list, ignored_ids: list, railway_url: str) -> Non
             skipped += 1
             continue
 
+        # Resolver categoría dinámicamente
+        category_concept = rec.get('category_concept', 'varios')
+        resolved = resolve_category(category_concept, db_categories)
+        rec_with_category = {**rec, 'category_concept': resolved}
+
         try:
-            ok = insert_via_api(rec, railway_url, auth)
+            ok = insert_via_api(rec_with_category, railway_url, auth)
         except Exception as e:
             print(f'  ERROR al insertar {rec.get("description")}: {e}')
             continue
