@@ -163,7 +163,7 @@ def insert_via_api(rec: dict, railway_url: str, auth: tuple) -> bool:
     import requests as req_lib
     payload = _build_api_payload(rec)
     resp = req_lib.post(f"{railway_url}/api/purchases", json=payload, auth=auth, timeout=15)
-    if resp.status_code == 201:
+    if resp.status_code == 200:
         return True
     if resp.status_code == 409:
         return False
