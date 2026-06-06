@@ -16,6 +16,7 @@ import {
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
 import type { CardStatementCreate, CurrencyCode } from '../api/types'
+import { positiveNumber } from '../utils/formValidation'
 
 /* ------------------------------------------------------------------ */
 /*  People                                                             */
@@ -24,6 +25,7 @@ import type { CardStatementCreate, CurrencyCode } from '../api/types'
 function PeopleSection() {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState('')
 
   const peopleQuery = useQuery({
     queryKey: ['people'],
@@ -35,6 +37,7 @@ function PeopleSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] })
       setName('')
+      setNameError('')
     },
   })
 
@@ -71,14 +74,23 @@ function PeopleSection() {
               className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => setNameError(name.trim() ? '' : 'Requerido')}
               placeholder="Ej: Pablo"
             />
+            {nameError && <span className="fieldError">{nameError}</span>}
           </div>
           <button
             className="button"
             style={{ height: '42px' }}
-            disabled={createMutation.isPending || !name.trim()}
-            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+            onClick={() => {
+              if (!name.trim()) {
+                setNameError('Requerido')
+                return
+              }
+              setNameError('')
+              createMutation.mutate()
+            }}
             type="button"
           >
             {createMutation.isPending ? 'Creando...' : 'Agregar'}
@@ -99,6 +111,7 @@ function PeopleSection() {
 function CardsSection() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({ name: '', provider: 'visa', ownerPersonId: '', last4: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const peopleQuery = useQuery({ queryKey: ['people'], queryFn: fetchPeople })
   const cardsQuery = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
@@ -114,6 +127,7 @@ function CardsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] })
       setForm({ name: '', provider: 'visa', ownerPersonId: '', last4: '' })
+      setErrors({})
     },
   })
 
@@ -157,8 +171,10 @@ function CardsSection() {
               className="input"
               value={form.name}
               onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+              onBlur={() => setErrors(e => ({ ...e, name: form.name.trim() ? '' : 'Requerido' }))}
               placeholder="Ej: Visa Santander"
             />
+            {errors.name && <span className="fieldError">{errors.name}</span>}
           </div>
           <div className="formRow">
             <label className="label">Proveedor</label>
@@ -180,12 +196,14 @@ function CardsSection() {
               className="input"
               value={form.ownerPersonId}
               onChange={(e) => setForm((s) => ({ ...s, ownerPersonId: e.target.value }))}
+              onBlur={() => setErrors(e => ({ ...e, ownerPersonId: form.ownerPersonId ? '' : 'Seleccioná una persona' }))}
             >
               <option value="">Seleccioná...</option>
               {people.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+            {errors.ownerPersonId && <span className="fieldError">{errors.ownerPersonId}</span>}
           </div>
           <div className="formRow">
             <label className="label">Últimos 4 (opcional)</label>
@@ -201,8 +219,16 @@ function CardsSection() {
         <button
           className="button"
           style={{ width: '100%', marginTop: '8px' }}
-          disabled={createMutation.isPending || !form.name.trim() || !form.ownerPersonId}
-          onClick={() => createMutation.mutate()}
+          disabled={createMutation.isPending}
+          onClick={() => {
+            const e = {
+              name: form.name.trim() ? '' : 'Requerido',
+              ownerPersonId: form.ownerPersonId ? '' : 'Seleccioná una persona',
+            }
+            setErrors(e)
+            if (Object.values(e).some(Boolean)) return
+            createMutation.mutate()
+          }}
           type="button"
         >
           {createMutation.isPending ? 'Creando...' : 'Agregar Nueva Tarjeta'}
@@ -222,6 +248,7 @@ function CardsSection() {
 function FxRatesSection() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({ yearMonth: '', currency: 'USD' as CurrencyCode, rate: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const fxQuery = useQuery({ queryKey: ['fx'], queryFn: fetchFxRates })
 
@@ -236,6 +263,7 @@ function FxRatesSection() {
       queryClient.invalidateQueries({ queryKey: ['fx'] })
       queryClient.invalidateQueries({ queryKey: ['reports'] })
       setForm((s) => ({ ...s, rate: '' }))
+      setErrors({})
     },
   })
 
@@ -275,7 +303,9 @@ function FxRatesSection() {
               type="month"
               value={form.yearMonth}
               onChange={(e) => setForm((s) => ({ ...s, yearMonth: e.target.value }))}
+              onBlur={() => setErrors(e => ({ ...e, yearMonth: form.yearMonth ? '' : 'Requerido' }))}
             />
+            {errors.yearMonth && <span className="fieldError">{errors.yearMonth}</span>}
           </div>
           <div className="formRow">
             <label className="label">Moneda</label>
@@ -300,17 +330,24 @@ function FxRatesSection() {
                 min="0.01"
                 value={form.rate}
                 onChange={(e) => setForm((s) => ({ ...s, rate: e.target.value }))}
+                onBlur={() => setErrors(e => ({ ...e, rate: positiveNumber(form.rate) }))}
                 placeholder="Ej: 1150.50"
               />
-              {form.rate && (Number(form.rate) <= 0 || Number.isNaN(Number(form.rate))) && (
-                <div className="hint" style={{ color: 'var(--color-error-text)', marginTop: '4px' }}>Debe ser mayor a 0</div>
-              )}
+              {errors.rate && <span className="fieldError">{errors.rate}</span>}
             </div>
             <button
               className="button"
               style={{ height: '42px', minWidth: '100px' }}
-              disabled={upsertMutation.isPending || !form.yearMonth || !form.rate || Number(form.rate) <= 0}
-              onClick={() => upsertMutation.mutate()}
+              disabled={upsertMutation.isPending}
+              onClick={() => {
+                const e = {
+                  yearMonth: form.yearMonth ? '' : 'Requerido',
+                  rate: positiveNumber(form.rate),
+                }
+                setErrors(e)
+                if (Object.values(e).some(Boolean)) return
+                upsertMutation.mutate()
+              }}
               type="button"
             >
               {upsertMutation.isPending ? '...' : 'Guardar'}
@@ -329,6 +366,7 @@ function FxRatesSection() {
 function DebtorsSection() {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState('')
 
   const debtorsQuery = useQuery({
     queryKey: ['debtors'],
@@ -340,6 +378,7 @@ function DebtorsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['debtors'] })
       setName('')
+      setNameError('')
     },
   })
 
@@ -376,14 +415,23 @@ function DebtorsSection() {
               className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => setNameError(name.trim() ? '' : 'Requerido')}
               placeholder="Ej: Marcelo"
             />
+            {nameError && <span className="fieldError">{nameError}</span>}
           </div>
           <button
             className="button"
             style={{ height: '42px' }}
-            disabled={createMutation.isPending || !name.trim()}
-            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+            onClick={() => {
+              if (!name.trim()) {
+                setNameError('Requerido')
+                return
+              }
+              setNameError('')
+              createMutation.mutate()
+            }}
             type="button"
           >
             {createMutation.isPending ? '...' : 'Agregar'}
@@ -402,7 +450,7 @@ function CardStatementsSection() {
   const queryClient = useQueryClient()
   const [selectedCardId, setSelectedCardId] = useState<string>('')
   const [form, setForm] = useState({ year_month: '', closing_date: '', due_date: '' })
-  const [error, setError] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const cardsQuery = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
   const cards = cardsQuery.data ?? []
@@ -419,9 +467,8 @@ function CardStatementsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['card-statements', selectedCardId] })
       setForm({ year_month: '', closing_date: '', due_date: '' })
-      setError('')
+      setErrors({})
     },
-    onError: (e) => setError(extractErrorMessage(e)),
   })
 
   const deleteMutation = useMutation({
@@ -430,10 +477,13 @@ function CardStatementsSection() {
   })
 
   const handleSubmit = () => {
-    if (!selectedCardId || !form.year_month || !form.closing_date) {
-      setError('Tarjeta, mes y fecha de cierre son obligatorios')
-      return
+    const e = {
+      cardId: selectedCardId ? '' : 'Seleccioná una tarjeta',
+      year_month: form.year_month ? '' : 'Requerido',
+      closing_date: form.closing_date ? '' : 'Requerido',
     }
+    setErrors(e)
+    if (Object.values(e).some(Boolean)) return
     upsertMutation.mutate({
       card_id: Number(selectedCardId),
       year_month: form.year_month,
@@ -451,13 +501,18 @@ function CardStatementsSection() {
         <select
           className="input"
           value={selectedCardId}
-          onChange={(e) => setSelectedCardId(e.target.value)}
+          onChange={(e) => {
+            setSelectedCardId(e.target.value)
+            setErrors(e2 => ({ ...e2, cardId: '' }))
+          }}
+          onBlur={() => setErrors(e => ({ ...e, cardId: selectedCardId ? '' : 'Seleccioná una tarjeta' }))}
         >
           <option value="">Seleccionar tarjeta...</option>
           {cards.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+        {errors.cardId && <span className="fieldError">{errors.cardId}</span>}
       </div>
 
       {selectedCardId && (
@@ -504,7 +559,9 @@ function CardStatementsSection() {
                 className="input"
                 value={form.year_month}
                 onChange={(e) => setForm({ ...form, year_month: e.target.value })}
+                onBlur={() => setErrors(e => ({ ...e, year_month: form.year_month ? '' : 'Requerido' }))}
               />
+              {errors.year_month && <span className="fieldError">{errors.year_month}</span>}
             </div>
             <div className="formRow" style={{ flex: 1, minWidth: '140px', marginBottom: 0 }}>
               <label className="label">Fecha de Cierre</label>
@@ -513,7 +570,9 @@ function CardStatementsSection() {
                 className="input"
                 value={form.closing_date}
                 onChange={(e) => setForm({ ...form, closing_date: e.target.value })}
+                onBlur={() => setErrors(e => ({ ...e, closing_date: form.closing_date ? '' : 'Requerido' }))}
               />
+              {errors.closing_date && <span className="fieldError">{errors.closing_date}</span>}
             </div>
             <div className="formRow" style={{ flex: 1, minWidth: '140px', marginBottom: 0 }}>
               <label className="label">Vencimiento (opcional)</label>
@@ -534,7 +593,11 @@ function CardStatementsSection() {
               Guardar
             </button>
           </div>
-          {error && <div className="error" style={{ marginTop: '8px' }}>{error}</div>}
+          {upsertMutation.isError && (
+            <div className="error" style={{ marginTop: '12px' }}>
+              {extractErrorMessage(upsertMutation.error)}
+            </div>
+          )}
         </>
       )}
     </div>
