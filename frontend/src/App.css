@@ -454,6 +454,7 @@
   position: fixed;
   top: 0;
   right: 0;
+  left: auto;
   width: min(300px, 85vw);
   height: 100%;
   height: 100dvh;
