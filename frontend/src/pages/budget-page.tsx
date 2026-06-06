@@ -9,7 +9,7 @@ import {
   deleteDebtTransfer
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { IncomeCreate, DebtTransferCreate } from '../api/types'
+import { positiveNumber } from '../utils/formValidation'
 import { Spinner } from '../components/Spinner'
 import { formatCurrency } from '../utils/format'
 import { getCurrentYearMonth } from '../utils/dates'
@@ -33,6 +33,9 @@ export function BudgetPage() {
   const [toPersonId, setToPersonId] = useState('')
   const [transferAmount, setTransferAmount] = useState('')
   const [transferNotes, setTransferNotes] = useState('')
+
+  const [incomeErrors, setIncomeErrors] = useState<Record<string, string>>({})
+  const [transferErrors, setTransferErrors] = useState<Record<string, string>>({})
 
   const queryClient = useQueryClient()
 
@@ -60,6 +63,7 @@ export function BudgetPage() {
       setSelectedPersonId('')
       setAmount('')
       setNotes('')
+      setIncomeErrors({})
     },
   })
 
@@ -72,6 +76,7 @@ export function BudgetPage() {
       setToPersonId('')
       setTransferAmount('')
       setTransferNotes('')
+      setTransferErrors({})
     },
   })
 
@@ -85,32 +90,41 @@ export function BudgetPage() {
 
   const handleSubmitIncome = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedPersonId || !amount || parseFloat(amount) <= 0) return
+    const errors = {
+      selectedPersonId: selectedPersonId ? '' : 'Seleccioná una persona',
+      amount: positiveNumber(amount),
+    }
+    setIncomeErrors(errors)
+    if (Object.values(errors).some(Boolean)) return
 
-    const payload: IncomeCreate = {
+    createIncomeMutation.mutate({
       person_id: parseInt(selectedPersonId),
       year_month: yearMonth,
       amount: parseFloat(amount),
       notes: notes.trim() || null,
-    }
-
-    createIncomeMutation.mutate(payload)
+    })
   }
 
   const handleSubmitTransfer = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!fromPersonId || !toPersonId || !transferAmount || parseFloat(transferAmount) <= 0) return
-    if (fromPersonId === toPersonId) return
+    const errors: Record<string, string> = {
+      fromPersonId: fromPersonId ? '' : 'Seleccioná una persona',
+      toPersonId: toPersonId ? '' : 'Seleccioná una persona',
+      transferAmount: positiveNumber(transferAmount),
+    }
+    if (fromPersonId && toPersonId && fromPersonId === toPersonId) {
+      errors.toPersonId = 'Debe ser distinta a la persona origen'
+    }
+    setTransferErrors(errors)
+    if (Object.values(errors).some(Boolean)) return
 
-    const payload: DebtTransferCreate = {
+    createTransferMutation.mutate({
       from_person_id: parseInt(fromPersonId),
       to_person_id: parseInt(toPersonId),
       year_month: yearMonth,
       amount: parseFloat(transferAmount),
       notes: transferNotes.trim() || null,
-    }
-
-    createTransferMutation.mutate(payload)
+    })
   }
 
   if (peopleLoading || incomesLoading || transfersLoading) {
@@ -164,13 +178,14 @@ export function BudgetPage() {
                   className="input"
                   value={selectedPersonId}
                   onChange={(e) => setSelectedPersonId(e.target.value)}
-                  required
+                  onBlur={() => setIncomeErrors(e => ({ ...e, selectedPersonId: selectedPersonId ? '' : 'Seleccioná una persona' }))}
                 >
                   <option value="">Seleccionar responsable...</option>
                   {people?.map((person) => (
                     <option key={person.id} value={person.id}>{person.name}</option>
                   ))}
                 </select>
+                {incomeErrors.selectedPersonId && <span className="fieldError">{incomeErrors.selectedPersonId}</span>}
               </div>
 
               <div className="formRow">
@@ -183,8 +198,9 @@ export function BudgetPage() {
                   onChange={(e) => setAmount(e.target.value)}
                   step="0.01"
                   min="0"
-                  required
+                  onBlur={() => setIncomeErrors(e => ({ ...e, amount: positiveNumber(amount) }))}
                 />
+                {incomeErrors.amount && <span className="fieldError">{incomeErrors.amount}</span>}
               </div>
 
               <div className="formRow">
@@ -227,13 +243,14 @@ export function BudgetPage() {
                     className="input"
                     value={fromPersonId}
                     onChange={(e) => setFromPersonId(e.target.value)}
-                    required
+                    onBlur={() => setTransferErrors(e => ({ ...e, fromPersonId: fromPersonId ? '' : 'Seleccioná una persona' }))}
                   >
                     <option value="">Quién paga...</option>
-                    {people?.map((person) => (
-                      <option key={person.id} value={person.id}>{person.name}</option>
+                    {people?.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
+                  {transferErrors.fromPersonId && <span className="fieldError">{transferErrors.fromPersonId}</span>}
                 </div>
                 <div className="formRow">
                   <label className="label">Hacia</label>
@@ -241,13 +258,14 @@ export function BudgetPage() {
                     className="input"
                     value={toPersonId}
                     onChange={(e) => setToPersonId(e.target.value)}
-                    required
+                    onBlur={() => setTransferErrors(e => ({ ...e, toPersonId: toPersonId ? '' : 'Seleccioná una persona' }))}
                   >
                     <option value="">Quién recibe...</option>
-                    {people?.map((person) => (
-                      <option key={person.id} value={person.id}>{person.name}</option>
+                    {people?.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
+                  {transferErrors.toPersonId && <span className="fieldError">{transferErrors.toPersonId}</span>}
                 </div>
               </div>
 
@@ -261,8 +279,9 @@ export function BudgetPage() {
                   onChange={(e) => setTransferAmount(e.target.value)}
                   step="0.01"
                   min="0"
-                  required
+                  onBlur={() => setTransferErrors(e => ({ ...e, transferAmount: positiveNumber(transferAmount) }))}
                 />
+                {transferErrors.transferAmount && <span className="fieldError">{transferErrors.transferAmount}</span>}
               </div>
 
               <div className="formRow">
