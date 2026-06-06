@@ -18,7 +18,7 @@ Tener una app web local funcional para importar resúmenes de tarjeta, gestionar
 - [x] Filtros en Compras (por tarjeta, persona, mes, categoría, montos, descripción, pagado por, deudor)
 - [x] Paginación en tablas grandes
 - [x] Indicadores de carga y errores claros
-- [ ] Validaciones frontend antes de enviar (ej. tarjeta obligatoria)
+- [x] Validaciones frontend antes de enviar (ej. tarjeta obligatoria)
 
 ### 3️⃣ Importación extendida
 - [ ] Importador CSV (Santander/Nación/MercadoPago)
