@@ -24,13 +24,16 @@ function EditableCell({
   value,
   placeholder,
   onSave,
+  required = false,
 }: {
   value: string | null | undefined
   placeholder: string
   onSave: (val: string) => void
+  required?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
+  const [cellError, setCellError] = useState('')
 
   if (!editing) {
     return (
@@ -48,27 +51,44 @@ function EditableCell({
   }
 
   return (
-    <input
-      type="text"
-      className="input"
-      style={{ padding: '4px 8px', fontSize: '0.85rem', width: '100%' }}
-      value={draft}
-      autoFocus
-      onChange={(e) => setDraft(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+    <div>
+      <input
+        type="text"
+        className="input"
+        style={{ padding: '4px 8px', fontSize: '0.85rem', width: '100%' }}
+        value={draft}
+        autoFocus
+        onChange={(e) => {
+          setDraft(e.target.value)
+          if (cellError) setCellError('')
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            if (required && !draft.trim()) {
+              setCellError('Requerido')
+              return
+            }
+            onSave(draft)
+            setEditing(false)
+            setCellError('')
+          }
+          if (e.key === 'Escape') {
+            setEditing(false)
+            setCellError('')
+          }
+        }}
+        onBlur={() => {
+          if (required && !draft.trim()) {
+            setCellError('Requerido')
+            return
+          }
           onSave(draft)
           setEditing(false)
-        }
-        if (e.key === 'Escape') {
-          setEditing(false)
-        }
-      }}
-      onBlur={() => {
-        onSave(draft)
-        setEditing(false)
-      }}
-    />
+          setCellError('')
+        }}
+      />
+      {cellError && <span className="fieldError">{cellError}</span>}
+    </div>
   )
 }
 
