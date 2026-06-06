@@ -57,8 +57,9 @@ function App() {
       </header>
 
       {menuOpen && (
-        <div className="mobileMenuOverlay" onClick={closeMenu}>
-          <nav className="mobileMenu" onClick={(e) => e.stopPropagation()}>
+        <>
+          <div className="mobileMenuOverlay" onClick={closeMenu} />
+          <nav className="mobileMenu">
             <div className="mobileMenuHeader">
               <div className="appTitle">Admin Consumos</div>
               <button className="mobileMenuClose" onClick={closeMenu} aria-label="Cerrar">✕</button>
@@ -75,7 +76,7 @@ function App() {
               </NavLink>
             ))}
           </nav>
-        </div>
+        </>
       )}
 
       <main className="appMain">
