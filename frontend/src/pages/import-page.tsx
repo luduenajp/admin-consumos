@@ -42,6 +42,7 @@ export function ImportPage() {
     isCommon: true,
   })
   const [detectResult, setDetectResult] = useState<DetectImportResult | null>(null)
+  const [importErrors, setImportErrors] = useState<Record<string, string>>({})
 
   const cardsQuery = useQuery({
     queryKey: ['cards'],
@@ -82,25 +83,20 @@ export function ImportPage() {
   const importMutation = useMutation({
     mutationFn: async () => {
       if (formState.format === 'gsheets') {
-        if (!formState.personId) throw new Error('Seleccioná un responsable del gasto')
-        if (!formState.gsheetsUrl) throw new Error('Ingresá la URL del archivo de Google Sheets')
         return importGSheets({
           url: formState.gsheetsUrl,
-          owner_person_id: formState.personId,
+          owner_person_id: formState.personId!,
           is_common: formState.isCommon,
         })
       }
 
-      if (!formState.cardId) throw new Error('Seleccioná una tarjeta')
-      if (!formState.file) throw new Error('Seleccioná un archivo')
-
-      const name = formState.file.name.toLowerCase()
+      const name = formState.file!.name.toLowerCase()
       if (formState.format === 'pdf') {
         if (!name.endsWith('.pdf')) throw new Error('El archivo debe ser .pdf')
         return importVisaPdf({
           provider: formState.provider,
-          cardId: formState.cardId,
-          file: formState.file,
+          cardId: formState.cardId!,
+          file: formState.file!,
           password: formState.pdfPassword || undefined,
           is_common: formState.isCommon,
         })
@@ -110,8 +106,8 @@ export function ImportPage() {
       }
       return importVisaXlsx({
         provider: formState.provider,
-        cardId: formState.cardId,
-        file: formState.file,
+        cardId: formState.cardId!,
+        file: formState.file!,
         is_common: formState.isCommon,
       })
     },
@@ -153,13 +149,10 @@ export function ImportPage() {
             <label className="label">Formato del Archivo</label>
             <select
               className="input"
-              onChange={(e) =>
-                setFormState((s) => ({
-                  ...s,
-                  format: e.target.value as ImportFormat,
-                  file: undefined,
-                }))
-              }
+              onChange={(e) => {
+                setFormState((s) => ({ ...s, format: e.target.value as ImportFormat, file: undefined }))
+                setImportErrors({})
+              }}
               value={formState.format}
             >
               <option value="xlsx">Excel (XLSX)</option>
@@ -192,6 +185,7 @@ export function ImportPage() {
                   </option>
                 ))}
               </select>
+              {importErrors.personId && <span className="fieldError">{importErrors.personId}</span>}
             </div>
 
             <div className="formRow">
@@ -203,6 +197,7 @@ export function ImportPage() {
                 value={formState.gsheetsUrl}
                 onChange={(e) => setFormState((s) => ({ ...s, gsheetsUrl: e.target.value }))}
               />
+              {importErrors.gsheetsUrl && <span className="fieldError">{importErrors.gsheetsUrl}</span>}
               <div className="hint">Recordá que el documento debe estar configurado como "Publicado en la Web" en formato CSV.</div>
             </div>
 
@@ -231,8 +226,18 @@ export function ImportPage() {
               <button
                 className="button"
                 style={{ width: '100%', height: '54px', fontSize: '1.1rem', fontWeight: 700 }}
-                disabled={importMutation.isPending || !formState.gsheetsUrl}
-                onClick={() => importMutation.mutate()}
+                disabled={importMutation.isPending}
+                onClick={() => {
+                  const errors: Record<string, string> = {}
+                  if (!formState.personId) errors.personId = 'Seleccioná un responsable'
+                  if (!formState.gsheetsUrl.trim()) errors.gsheetsUrl = 'Ingresá la URL del sheet'
+                  if (Object.keys(errors).length > 0) {
+                    setImportErrors(errors)
+                    return
+                  }
+                  setImportErrors({})
+                  importMutation.mutate()
+                }}
                 type="button"
               >
                 {importMutation.isPending ? 'Procesando archivo...' : 'Comenzar Importación'}
@@ -393,6 +398,7 @@ export function ImportPage() {
                       </option>
                     ))}
                   </select>
+                  {importErrors.cardId && <span className="fieldError">{importErrors.cardId}</span>}
                 </div>
 
                 <div className="formRow" style={{
@@ -419,8 +425,15 @@ export function ImportPage() {
                   <button
                     className="button"
                     style={{ flex: 1, height: '54px', fontSize: '1.1rem', fontWeight: 700 }}
-                    disabled={importMutation.isPending || !formState.cardId}
-                    onClick={() => importMutation.mutate()}
+                    disabled={importMutation.isPending}
+                    onClick={() => {
+                      if (!formState.cardId) {
+                        setImportErrors({ cardId: 'Seleccioná una tarjeta' })
+                        return
+                      }
+                      setImportErrors({})
+                      importMutation.mutate()
+                    }}
                     type="button"
                   >
                     {importMutation.isPending ? 'Importando...' : 'Confirmar e Importar'}
