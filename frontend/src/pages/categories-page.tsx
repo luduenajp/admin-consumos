@@ -15,6 +15,7 @@ export function CategoriesPage() {
     const [editingId, setEditingId] = useState<number | null>(null)
     const [editForm, setEditForm] = useState<Partial<Category>>({})
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+    const [nameError, setNameError] = useState('')
 
     useEffect(() => {
         loadCategories()
@@ -31,7 +32,11 @@ export function CategoriesPage() {
     }
 
     async function handleCreate() {
-        if (!newCategory.name.trim()) return
+        if (!newCategory.name.trim()) {
+            setNameError('Requerido')
+            return
+        }
+        setNameError('')
         await createCategory(newCategory)
         setNewCategory({ name: '', color: '#3b82f6' })
         await loadCategories()
@@ -65,7 +70,9 @@ export function CategoriesPage() {
                             type="text"
                             value={newCategory.name}
                             onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                            onBlur={() => setNameError(newCategory.name.trim() ? '' : 'Requerido')}
                         />
+                        {nameError && <span className="fieldError">{nameError}</span>}
                     </div>
                     <div className="formRow" style={{ marginBottom: 0 }}>
                         <label className="label">Color</label>
@@ -78,7 +85,7 @@ export function CategoriesPage() {
                             style={{ width: '60px', padding: '4px', height: '44px', cursor: 'pointer' }}
                         />
                     </div>
-                    <button className="button" onClick={handleCreate} disabled={!newCategory.name.trim()}>
+                    <button className="button" onClick={handleCreate}>
                         Agregar
                     </button>
                 </div>
