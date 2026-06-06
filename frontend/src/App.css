@@ -380,3 +380,199 @@
     grid-column: span 1;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Hamburger toggle (hidden on desktop)                               */
+/* ------------------------------------------------------------------ */
+
+.menuToggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.menuToggle:hover {
+  background: var(--color-bg);
+}
+
+.menuToggle span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--color-text);
+  border-radius: 2px;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  transform-origin: center;
+}
+
+.menuToggle.open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.menuToggle.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.menuToggle.open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mobile drawer menu                                                 */
+/* ------------------------------------------------------------------ */
+
+.mobileMenuOverlay {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mobile breakpoints                                                 */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+  /* Header */
+  .appHeader {
+    padding: 0 16px;
+    height: 60px;
+  }
+
+  .appNav {
+    display: none;
+  }
+
+  .menuToggle {
+    display: flex;
+  }
+
+  /* Main content */
+  .appMain {
+    padding: 20px 16px;
+  }
+
+  .page {
+    gap: 16px;
+  }
+
+  .pageTitle {
+    font-size: 1.5rem;
+  }
+
+  /* Panels */
+  .panel {
+    padding: 20px 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .panelTitle {
+    font-size: 1rem;
+    margin-bottom: 16px;
+  }
+
+  /* Table */
+  .table th,
+  .table td {
+    padding: 12px 10px;
+    font-size: 0.85rem;
+  }
+
+  /* Mobile overlay & drawer */
+  .mobileMenuOverlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 200;
+    animation: overlayFadeIn 0.2s ease;
+  }
+
+  @keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .mobileMenu {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: min(300px, 85vw);
+    height: 100%;
+    background: var(--color-surface);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    animation: drawerSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes drawerSlideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+
+  .mobileMenuHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    background: var(--color-surface);
+    z-index: 1;
+  }
+
+  .mobileMenuClose {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+    transition: all 0.2s;
+  }
+
+  .mobileMenuClose:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .mobileLink {
+    display: block;
+    padding: 16px 20px;
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 500;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .mobileLink:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+    opacity: 1;
+  }
+
+  .mobileLink.active {
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+    font-weight: 600;
+  }
+}
