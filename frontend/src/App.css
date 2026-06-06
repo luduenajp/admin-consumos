@@ -308,6 +308,13 @@
   color: var(--color-text-secondary);
 }
 
+.fieldError {
+  color: var(--color-error-text);
+  font-size: 0.78rem;
+  margin-top: 3px;
+  display: block;
+}
+
 .muted {
   color: var(--color-muted);
   font-size: 0.95rem;
