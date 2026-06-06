@@ -56,7 +56,11 @@ def _process_installment_row(
     if was_already_imported(session=session, fingerprint=fingerprint):
         return False
 
-    payment_month = add_months(r.statement_year_month, 1)
+    # Si la compra es posterior al cierre del resumen, pertenece al ciclo siguiente
+    effective_statement_ym = r.statement_year_month
+    if r.statement_close_date and r.purchase_date > r.statement_close_date:
+        effective_statement_ym = add_months(r.statement_year_month, 1)
+    payment_month = add_months(effective_statement_ym, 1)
     first_installment_month = add_months(payment_month, -(r.installment_index - 1))
     amount_total = round(r.installment_amount * r.installments_total, 2)
 

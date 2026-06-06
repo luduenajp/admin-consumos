@@ -106,30 +106,38 @@ def _parse_mes_yy(mes_abrev: str, yy: str) -> Optional[str]:
     return f"{y:04d}-{mes:02d}"
 
 
-def _detect_statement_year_month_from_text(text: str) -> Optional[str]:
-    """Busca el mes de cierre en el texto del PDF."""
+def _detect_statement_year_month_from_text(text: str) -> tuple[Optional[str], Optional[date]]:
+    """Busca el mes y fecha exacta de cierre en el texto del PDF."""
     # MercadoPago: "Cierre actual 5 de febrero" o "Este es tu resumen de febrero"
     m = re.search(
-        r"(cierre\s+actual|resumen\s+de)\s+(?:\d+\s+de\s+)?(\w+)\b",
+        r"(cierre\s+actual|resumen\s+de)\s+(?:(\d+)\s+de\s+)?(\w+)\b",
         text,
         re.IGNORECASE,
     )
     if m:
         prefix = m.group(1).lower()
-        mes_nombre = m.group(2).lower()
+        day_str = m.group(2)
+        mes_nombre = m.group(3).lower()
         mes = _MES_NOMBRE.get(mes_nombre) or _MES_ABREV.get(mes_nombre[:3])
         if mes:
             years = [int(x) for x in re.findall(r"\b(20\d{2})\b", text)]
             y = max(years) if years else 2026
-            
+
             # Si dice "resumen de X", X es el mes de vencimiento. El mes de cierre lógico es el anterior.
             if "resumen de" in prefix:
                 mes -= 1
                 if mes == 0:
                     mes = 12
                     y -= 1
-                    
-            return f"{y:04d}-{mes:02d}"
+
+            ym = f"{y:04d}-{mes:02d}"
+            close_date: Optional[date] = None
+            if day_str:
+                try:
+                    close_date = date(y, mes, int(day_str))
+                except ValueError:
+                    pass
+            return ym, close_date
 
     # MercadoPago / genérico: "Fecha de cierre: 22/01/2026" o "Cierre: 22/01/2026"
     m = re.search(
@@ -139,21 +147,36 @@ def _detect_statement_year_month_from_text(text: str) -> Optional[str]:
     )
     if m:
         d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        return f"{y:04d}-{mo:02d}"
+        try:
+            return f"{y:04d}-{mo:02d}", date(y, mo, d)
+        except ValueError:
+            return f"{y:04d}-{mo:02d}", None
 
-    # Banco Nación Visa: "CIERRE ACTUAL: 22 Ene 26" (DD Mmm YY)
+    # Banco Nación Visa: "CIERRE ACTUAL: 21 May 26" (DD Mmm YY)
     m = re.search(r"cierre\s+actual[:\s]+(\d{1,2})\s+(\w{3})\s+(\d{2})\b", text, re.IGNORECASE)
     if m:
-        mes_abrev, yy = m.group(2), m.group(3)
+        dd, mes_abrev, yy = int(m.group(1)), m.group(2), m.group(3)
         if mes_abrev.lower() in _MES_ABREV:
-            return _parse_mes_yy(mes_abrev, yy)
+            ym = _parse_mes_yy(mes_abrev, yy)
+            if ym:
+                y2, mo2 = int(ym[:4]), int(ym[5:7])
+                try:
+                    return ym, date(y2, mo2, dd)
+                except ValueError:
+                    return ym, None
 
     # Banco Nación Mastercard: "Estado de cuenta al : 22-Ene-26" o "Cierre Anterior : 24-Dic-25"
     m = re.search(r"(?:estado\s+de\s+cuenta\s+al|cierre\s+anterior)[:\s]+(\d{1,2})[-](\w{3})[-](\d{2})\b", text, re.IGNORECASE)
     if m:
-        mes_abrev, yy = m.group(2), m.group(3)
+        dd, mes_abrev, yy = int(m.group(1)), m.group(2), m.group(3)
         if mes_abrev.lower() in _MES_ABREV:
-            return _parse_mes_yy(mes_abrev, yy)
+            ym = _parse_mes_yy(mes_abrev, yy)
+            if ym:
+                y2, mo2 = int(ym[:4]), int(ym[5:7])
+                try:
+                    return ym, date(y2, mo2, dd)
+                except ValueError:
+                    return ym, None
 
     # Patrones: "Fecha de cierre: 22/01/2026", "Cierre: 22-01-2026"
     patterns = [
@@ -167,11 +190,14 @@ def _detect_statement_year_month_from_text(text: str) -> Optional[str]:
             groups = m.groups()
             if len(groups) >= 3:
                 d, mo, y = int(groups[0]), int(groups[1]), int(groups[2])
-                return f"{y:04d}-{mo:02d}"
+                try:
+                    return f"{y:04d}-{mo:02d}", date(y, mo, d)
+                except ValueError:
+                    return f"{y:04d}-{mo:02d}", None
             elif len(groups) == 2:
                 mo, y = int(groups[0]), int(groups[1])
-                return f"{y:04d}-{mo:02d}"
-    return None
+                return f"{y:04d}-{mo:02d}", None
+    return None, None
 
 
 # Monto: con o sin separador de miles (55863,54 o 1.234,56)
@@ -193,7 +219,7 @@ _LINEA_MOVIMIENTO_RE = re.compile(
 )
 
 
-def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedPurchaseRow]:
+def _parse_nacion_text_format(full_text: str, statement_ym: str, statement_close_date: Optional[date] = None) -> list[ParsedPurchaseRow]:
     """Parsea formato Banco Nación: FECHA COMPROBANTE DETALLE DE TRANSACCION PESOS DOLAR."""
     out: list[ParsedPurchaseRow] = []
     in_movements = False
@@ -262,13 +288,14 @@ def _parse_nacion_text_format(full_text: str, statement_ym: str) -> list[ParsedP
                 installment_amount=amount_val,
                 statement_year_month=statement_ym,
                 occurrence_index=occ_index,
+                statement_close_date=statement_close_date,
             )
         )
 
     return out
 
 
-def _parse_nacion_mastercard_format(full_text: str, statement_ym: str) -> list[ParsedPurchaseRow]:
+def _parse_nacion_mastercard_format(full_text: str, statement_ym: str, statement_close_date: Optional[date] = None) -> list[ParsedPurchaseRow]:
     """Parsea formato Banco Nación Mastercard: DETALLES DEL MES / CUOTAS DEL MES."""
     out: list[ParsedPurchaseRow] = []
     in_movements = False
@@ -326,6 +353,7 @@ def _parse_nacion_mastercard_format(full_text: str, statement_ym: str) -> list[P
                 installment_amount=amount_val,
                 statement_year_month=statement_ym,
                 occurrence_index=occ_index,
+                statement_close_date=statement_close_date,
             )
         )
 
@@ -351,7 +379,7 @@ _LINEA_MERCADOPAGO_RE = re.compile(
 )
 
 
-def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[ParsedPurchaseRow]:
+def _parse_mercadopago_app_format(full_text: str, statement_ym: str, statement_close_date: Optional[date] = None) -> list[ParsedPurchaseRow]:
     """Parsea formato MercadoPago app: DD/mmm descripción $ monto."""
     out: list[ParsedPurchaseRow] = []
     stmt_year, stmt_month = int(statement_ym[:4]), int(statement_ym[5:7])
@@ -411,13 +439,14 @@ def _parse_mercadopago_app_format(full_text: str, statement_ym: str) -> list[Par
                 installment_amount=amount_val,
                 statement_year_month=statement_ym,
                 occurrence_index=occ_index,
+                statement_close_date=statement_close_date,
             )
         )
 
     return out
 
 
-def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedPurchaseRow]:
+def _parse_mercadopago_format(full_text: str, statement_ym: str, statement_close_date: Optional[date] = None) -> list[ParsedPurchaseRow]:
     """Parsea formato MercadoPago PDF alternativo (DD/MM/YYYY)."""
     out: list[ParsedPurchaseRow] = []
 
@@ -484,6 +513,7 @@ def _parse_mercadopago_format(full_text: str, statement_ym: str) -> list[ParsedP
                 installment_amount=amount_val,
                 statement_year_month=statement_ym,
                 occurrence_index=occ_index,
+                statement_close_date=statement_close_date,
             )
         )
 
@@ -579,18 +609,18 @@ def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPur
             if text:
                 full_text += text + "\n"
 
-    statement_ym = _detect_statement_year_month_from_text(full_text)
+    statement_ym, statement_close_date = _detect_statement_year_month_from_text(full_text)
     if not statement_ym:
         raise ValueError("No se pudo detectar el mes de cierre del resumen en el PDF")
 
     # Banco Nación / MercadoPago: movimientos en texto
-    out = _parse_nacion_text_format(full_text, statement_ym)
+    out = _parse_nacion_text_format(full_text, statement_ym, statement_close_date)
     if not out:
-        out = _parse_nacion_mastercard_format(full_text, statement_ym)
+        out = _parse_nacion_mastercard_format(full_text, statement_ym, statement_close_date)
     if not out:
-        out = _parse_mercadopago_app_format(full_text, statement_ym)
+        out = _parse_mercadopago_app_format(full_text, statement_ym, statement_close_date)
     if not out:
-        out = _parse_mercadopago_format(full_text, statement_ym)
+        out = _parse_mercadopago_format(full_text, statement_ym, statement_close_date)
     if out:
         return out
 
@@ -687,6 +717,7 @@ def parse_visa_pdf(path: Path, password: Optional[str] = None) -> list[ParsedPur
                     installment_amount=amount_val,
                     statement_year_month=statement_ym,
                     occurrence_index=occ_index,
+                    statement_close_date=statement_close_date,
                 )
             )
 

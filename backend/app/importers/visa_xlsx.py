@@ -24,6 +24,7 @@ class ParsedPurchaseRow:
     installment_amount: float
     statement_year_month: str  # YYYY-MM
     occurrence_index: int = 1
+    statement_close_date: Optional[date] = None  # fecha exacta de cierre del resumen
 
 
 def _parse_ddmmyyyy(value: object) -> Optional[date]:
