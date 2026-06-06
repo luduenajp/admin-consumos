@@ -11,6 +11,7 @@ import {
 import { extractErrorMessage } from '../api/http'
 import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMonthResponse } from '../api/types'
 import { getRelativeMonth } from '../utils/dates'
+import { requiredField, positiveNumber } from '../utils/formValidation'
 
 interface PurchaseFormProps {
     onSuccess?: () => void
@@ -39,6 +40,7 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
 
     const [amountInputMode, setAmountInputMode] = useState<'total' | 'installment'>('total')
     const [amountInputValue, setAmountInputValue] = useState('')
+    const [errors, setErrors] = useState<Record<string, string>>({})
 
     const { data: people = [] } = useQuery({ queryKey: ['people'], queryFn: fetchPeople })
     const { data: cards = [] } = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
@@ -87,6 +89,32 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
         }
     }, [amountInputValue, amountInputMode, formData.installments_total])
 
+    function validateField(field: string): string {
+        switch (field) {
+            case 'description': return requiredField(formData.description)
+            case 'amount_original': return positiveNumber(formData.amount_original)
+            case 'owner_person_id': return formData.owner_person_id ? '' : 'Seleccioná una persona'
+            case 'card_id':
+                return formData.payment_method === 'card' && !formData.card_id
+                    ? 'Seleccioná una tarjeta'
+                    : ''
+            default: return ''
+        }
+    }
+
+    function handleBlur(field: string) {
+        setErrors(e => ({ ...e, [field]: validateField(field) }))
+    }
+
+    function validateAll(): Record<string, string> {
+        return {
+            description: validateField('description'),
+            amount_original: validateField('amount_original'),
+            owner_person_id: validateField('owner_person_id'),
+            card_id: validateField('card_id'),
+        }
+    }
+
     const createMutation = useMutation({
         mutationFn: (payload: PurchaseCreate) => createPurchase(payload),
         onSuccess: () => {
@@ -94,6 +122,7 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
             queryClient.invalidateQueries({ queryKey: ['reports'] })
             queryClient.invalidateQueries({ queryKey: ['monthly-balance'] })
             queryClient.invalidateQueries({ queryKey: ['transfer-calculation'] })
+            setErrors({})
             onSuccess?.()
         },
         onError: (err) => {
@@ -103,15 +132,9 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        if (!formData.description || !formData.amount_original || !formData.owner_person_id) {
-            alert('Por favor completa los campos obligatorios (Descripción, Monto, Pagado por)')
-            return
-        }
-
-        if (formData.payment_method === 'card' && !formData.card_id) {
-            alert('Por favor selecciona una tarjeta')
-            return
-        }
+        const allErrors = validateAll()
+        setErrors(allErrors)
+        if (Object.values(allErrors).some(Boolean)) return
 
         const payload: PurchaseCreate = {
             purchase_date: formData.purchase_date,
@@ -156,9 +179,9 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                     <select
                         className="input"
                         disabled={formData.payment_method !== 'card'}
-                        required={formData.payment_method === 'card'}
                         value={formData.card_id}
                         onChange={(e) => setFormData({ ...formData, card_id: e.target.value })}
+                        onBlur={() => handleBlur('card_id')}
                         style={{ opacity: formData.payment_method === 'card' ? 1 : 0.5 }}
                     >
                         <option value="">{formData.payment_method === 'card' ? 'Seleccionar...' : 'N/A'}</option>
@@ -168,15 +191,16 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                             </option>
                         ))}
                     </select>
+                    {errors.card_id && <span className="fieldError">{errors.card_id}</span>}
                 </div>
 
                 <div className="formRow">
                     <label className="label">Pagado por</label>
                     <select
                         className="input"
-                        required
                         value={formData.owner_person_id}
                         onChange={(e) => setFormData({ ...formData, owner_person_id: e.target.value })}
+                        onBlur={() => handleBlur('owner_person_id')}
                     >
                         <option value="">Seleccionar...</option>
                         {people.map((p) => (
@@ -185,6 +209,7 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                             </option>
                         ))}
                     </select>
+                    {errors.owner_person_id && <span className="fieldError">{errors.owner_person_id}</span>}
                 </div>
 
                 <div className="formRow">
@@ -192,7 +217,6 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                     <input
                         type="date"
                         className="input"
-                        required
                         value={formData.purchase_date}
                         onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
                     />
@@ -203,11 +227,12 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                     <input
                         type="text"
                         className="input"
-                        required
                         placeholder="Ej: Almuerzo, Supermercado..."
                         value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        onBlur={() => handleBlur('description')}
                     />
+                    {errors.description && <span className="fieldError">{errors.description}</span>}
                 </div>
 
                 <div className="formRow">
@@ -254,10 +279,10 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                             step="0.01"
                             className="input"
                             style={{ flex: 1, minWidth: '0' }}
-                            required
                             placeholder="0.00"
                             value={amountInputValue}
                             onChange={(e) => setAmountInputValue(e.target.value)}
+                            onBlur={() => handleBlur('amount_original')}
                         />
                         <select
                             className="input"
@@ -274,6 +299,7 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
                             Monto total: ${parseFloat(formData.amount_original).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                     )}
+                    {errors.amount_original && <span className="fieldError">{errors.amount_original}</span>}
                 </div>
 
                 <div className="formRow">
