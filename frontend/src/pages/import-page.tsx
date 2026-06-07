@@ -131,11 +131,11 @@ export function ImportPage() {
     <section className="page">
       <h2 className="pageTitle">Importar Datos</h2>
       <div className="panel" style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        <div className="importFormatSelector" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Proveedor</label>
             <select
-              className="input"
+              className="input importFormatOption"
               onChange={(e) => setFormState((s) => ({ ...s, provider: e.target.value }))}
               value={formState.provider}
             >
@@ -148,7 +148,7 @@ export function ImportPage() {
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Formato del Archivo</label>
             <select
-              className="input"
+              className="input importFormatOption"
               onChange={(e) => {
                 setFormState((s) => ({ ...s, format: e.target.value as ImportFormat, file: undefined }))
                 setImportErrors({})
@@ -251,7 +251,7 @@ export function ImportPage() {
               <label className="label">
                 Archivo {formState.format === 'pdf' ? 'PDF' : 'Excel'}
               </label>
-              <div style={{
+              <div className="importDropZone" style={{
                 border: '2px dashed var(--color-border)',
                 padding: '32px',
                 borderRadius: 'var(--radius-md)',
@@ -304,7 +304,7 @@ export function ImportPage() {
 
             {/* Botón Analizar (Paso 1) */}
             {!detectResult ? (
-              <div style={{ marginTop: '24px' }}>
+              <div className="importSubmitRow" style={{ marginTop: '24px' }}>
                 <button
                   className="button"
                   style={{ width: '100%', height: '48px', fontSize: '1rem', fontWeight: 600 }}

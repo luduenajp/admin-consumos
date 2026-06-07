@@ -53,22 +53,33 @@ function PeopleSection() {
       {people.length === 0 ? (
         <div className="muted">Sin personas cargadas</div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-            </tr>
-          </thead>
-          <tbody>
-            {people.map((p) => (
-              <tr key={p.id}>
-                <td>{p.id}</td>
-                <td>{p.name}</td>
+        <>
+          <table className="table adminEntityTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
               </tr>
+            </thead>
+            <tbody>
+              {people.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.id}</td>
+                  <td>{p.name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* Mobile card list */}
+          <div className="adminCardList">
+            {people.map((p) => (
+              <div key={p.id} className="adminCard">
+                <span className="adminCardName">{p.name}</span>
+                <span className="adminCardMeta">ID: {p.id}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
@@ -144,31 +155,44 @@ function CardsSection() {
       {cards.length === 0 ? (
         <div className="muted">Sin tarjetas cargadas</div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-              <th>Proveedor</th>
-              <th>Persona</th>
-              <th>Últimos 4</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cards.map((c) => (
-              <tr key={c.id}>
-                <td>{c.id}</td>
-                <td>{c.name}</td>
-                <td>{c.provider}</td>
-                <td>{people.find((p) => p.id === c.owner_person_id)?.name ?? c.owner_person_id}</td>
-                <td>{c.last4 ?? '-'}</td>
+        <>
+          <table className="table adminEntityTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Proveedor</th>
+                <th>Persona</th>
+                <th>Últimos 4</th>
               </tr>
+            </thead>
+            <tbody>
+              {cards.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.id}</td>
+                  <td>{c.name}</td>
+                  <td>{c.provider}</td>
+                  <td>{people.find((p) => p.id === c.owner_person_id)?.name ?? c.owner_person_id}</td>
+                  <td>{c.last4 ?? '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="adminCardList">
+            {cards.map((c) => (
+              <div key={c.id} className="adminCard">
+                <span className="adminCardName">{c.name}</span>
+                <span className="adminCardMeta">
+                  {c.provider} · {people.find((p) => p.id === c.owner_person_id)?.name ?? '-'}
+                  {c.last4 ? ` · ****${c.last4}` : ''}
+                </span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="admin-form-grid">
           <div className="formRow">
             <label className="label">Nombre</label>
             <input
@@ -193,7 +217,7 @@ function CardsSection() {
             </select>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="admin-form-grid">
           <div className="formRow">
             <label className="label">Titular</label>
             <select
@@ -279,27 +303,37 @@ function FxRatesSection() {
       {rates.length === 0 ? (
         <div className="muted">Sin tipos de cambio cargados</div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Mes</th>
-              <th>Moneda</th>
-              <th>Cotización (ARS)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rates.map((r) => (
-              <tr key={r.id}>
-                <td>{r.year_month}</td>
-                <td>{r.currency}</td>
-                <td>{r.rate_to_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</td>
+        <>
+          <table className="table adminEntityTable">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>Moneda</th>
+                <th>Cotización (ARS)</th>
               </tr>
+            </thead>
+            <tbody>
+              {rates.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.year_month}</td>
+                  <td>{r.currency}</td>
+                  <td>{r.rate_to_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="adminCardList">
+            {rates.map((r) => (
+              <div key={r.id} className="adminCard">
+                <span className="adminCardName">{r.year_month}</span>
+                <span className="adminCardMeta">1 {r.currency} = {r.rate_to_ars.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ARS</span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="admin-form-grid">
           <div className="formRow">
             <label className="label">Mes (YYYY-MM)</label>
             <input
@@ -394,22 +428,32 @@ function DebtorsSection() {
       {debtors.length === 0 ? (
         <div className="muted">Sin deudores cargados</div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-            </tr>
-          </thead>
-          <tbody>
-            {debtors.map((d) => (
-              <tr key={d.id}>
-                <td>{d.id}</td>
-                <td>{d.name}</td>
+        <>
+          <table className="table adminEntityTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
               </tr>
+            </thead>
+            <tbody>
+              {debtors.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.id}</td>
+                  <td>{d.name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="adminCardList">
+            {debtors.map((d) => (
+              <div key={d.id} className="adminCard">
+                <span className="adminCardName">{d.name}</span>
+                <span className="adminCardMeta">ID: {d.id}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>

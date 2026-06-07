@@ -948,3 +948,94 @@
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Import page — Mobile polish                                        */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+  .importFormatSelector {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .importFormatOption {
+    min-height: 44px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .importDropZone {
+    min-height: 120px;
+    width: 100%;
+  }
+
+  .importSubmitRow {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .importSubmitRow .input,
+  .importSubmitRow .button {
+    width: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin page — Mobile card lists                                     */
+/* ------------------------------------------------------------------ */
+
+.adminEntityTable {
+  /* visible on desktop (default) */
+}
+
+.adminCardList {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .adminEntityTable {
+    display: none;
+  }
+
+  .adminCardList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+}
+
+.adminCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.adminCardName {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.adminCardMeta {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+/* Admin form grids */
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .admin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
