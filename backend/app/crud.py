@@ -9,6 +9,7 @@ from sqlmodel import Session, col, func, select
 
 from app import schemas
 from app.models import (
+    Beneficiary,
     Card,
     CardStatement,
     Category,
@@ -31,6 +32,8 @@ from app.models import (
     SavingsExchangeRate,
 )
 from app.schemas import (
+    BeneficiaryCreate,
+    BeneficiaryUpdate,
     CardCreate,
     CategoryCreate,
     CategoryUpdate,
@@ -1418,6 +1421,101 @@ def delete_category(*, session: Session, category_id: int) -> None:
     
     session.delete(category)
     session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Beneficiaries
+# ---------------------------------------------------------------------------
+
+
+def list_beneficiaries(*, session: Session) -> list[Beneficiary]:
+    return list(session.exec(select(Beneficiary).order_by(Beneficiary.name)))
+
+
+def create_beneficiary(*, session: Session, payload: BeneficiaryCreate) -> Beneficiary:
+    b = Beneficiary(
+        name=payload.name,
+        cbu=payload.cbu,
+        cuit=payload.cuit,
+        alias=payload.alias,
+    )
+    session.add(b)
+    session.commit()
+    session.refresh(b)
+    return b
+
+
+def update_beneficiary(*, session: Session, beneficiary_id: int, payload: BeneficiaryUpdate) -> Beneficiary:
+    b = session.get(Beneficiary, beneficiary_id)
+    if b is None:
+        raise ValueError(f"Beneficiary {beneficiary_id} not found")
+    if payload.name is not None:
+        b.name = payload.name
+    if payload.cbu is not None:
+        b.cbu = payload.cbu
+    if payload.cuit is not None:
+        b.cuit = payload.cuit
+    if payload.alias is not None:
+        b.alias = payload.alias
+    session.commit()
+    session.refresh(b)
+    return b
+
+
+def delete_beneficiary(*, session: Session, beneficiary_id: int) -> None:
+    b = session.get(Beneficiary, beneficiary_id)
+    if b is None:
+        raise ValueError(f"Beneficiary {beneficiary_id} not found")
+    session.delete(b)
+    session.commit()
+
+
+def match_beneficiary(
+    *,
+    session: Session,
+    nombre: str | None = None,
+    cbu: str | None = None,
+    cuit: str | None = None,
+    alias: str | None = None,
+) -> tuple[Beneficiary, str] | None:
+    """
+    Match extracted data against known Beneficiary records.
+    Returns (beneficiary, confidence) or None.
+    confidence is 'exact' or 'fuzzy'.
+
+    Matching order:
+    1. Exact: CBU or CUIT identical (case-sensitive digits)
+    2. Fuzzy: normalized alias match OR name similarity >= 80% (difflib)
+    """
+    import difflib
+
+    beneficiaries = list_beneficiaries(session=session)
+    if not beneficiaries:
+        return None
+
+    # 1. Exact match by CBU or CUIT
+    for b in beneficiaries:
+        if cbu and b.cbu and cbu.strip() == b.cbu.strip():
+            return b, "exact"
+        if cuit and b.cuit and cuit.strip() == b.cuit.strip():
+            return b, "exact"
+
+    # 2. Fuzzy: alias (normalized lowercase, no spaces)
+    if alias:
+        alias_norm = alias.lower().replace(" ", "")
+        for b in beneficiaries:
+            if b.alias and b.alias.lower().replace(" ", "") == alias_norm:
+                return b, "fuzzy"
+
+    # 3. Fuzzy: name similarity >= 80%
+    if nombre:
+        nombre_lower = nombre.lower()
+        for b in beneficiaries:
+            ratio = difflib.SequenceMatcher(None, nombre_lower, b.name.lower()).ratio()
+            if ratio >= 0.8:
+                return b, "fuzzy"
+
+    return None
 
 
 import re as _re
