@@ -285,16 +285,24 @@ export function DashboardPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="panel">
               <div className="panelTitle">Gasto por Categoría</div>
-              <CategoryChart data={categorySpendingData ?? []} categories={categoriesData ?? []} />
+              {categorySpendingLoading ? (
+                <div className="loadingContainer"><Spinner size={28} /></div>
+              ) : (
+                <CategoryChart data={categorySpendingData ?? []} categories={categoriesData ?? []} />
+              )}
             </div>
             <div className="panel">
               <div className="panelTitle">Cuotas Futuras</div>
-              <TimelineChart
-                data={timelineData ?? []}
-                commonData={isCommon === undefined ? timelineCommon : undefined}
-                personalData={isCommon === undefined ? timelinePersonal : undefined}
-                monthlyIncome={monthlyIncome}
-              />
+              {timelineLoading ? (
+                <div className="loadingContainer"><Spinner size={28} /></div>
+              ) : (
+                <TimelineChart
+                  data={timelineData ?? []}
+                  commonData={isCommon === undefined ? timelineCommon : undefined}
+                  personalData={isCommon === undefined ? timelinePersonal : undefined}
+                  monthlyIncome={monthlyIncome}
+                />
+              )}
             </div>
           </div>
         )}
