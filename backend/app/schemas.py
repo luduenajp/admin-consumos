@@ -217,6 +217,28 @@ class DebtorRead(BaseModel):
     name: str
 
 
+class BeneficiaryCreate(BaseModel):
+    name: str
+    cbu: Optional[str] = None
+    cuit: Optional[str] = None
+    alias: Optional[str] = None
+
+
+class BeneficiaryUpdate(BaseModel):
+    name: Optional[str] = None
+    cbu: Optional[str] = None
+    cuit: Optional[str] = None
+    alias: Optional[str] = None
+
+
+class BeneficiaryRead(BaseModel):
+    id: int
+    name: str
+    cbu: Optional[str] = None
+    cuit: Optional[str] = None
+    alias: Optional[str] = None
+
+
 class DebtSummaryRow(BaseModel):
     debtor_id: int
     debtor_name: str

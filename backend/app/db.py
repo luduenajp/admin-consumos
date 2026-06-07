@@ -40,6 +40,17 @@ def _migrate_add_columns() -> None:
         if "import_batch_id" not in columns:
             conn.execute(text("ALTER TABLE purchase ADD COLUMN import_batch_id INTEGER REFERENCES importbatch(id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_import_batch_id ON purchase(import_batch_id)"))
+
+        # Create beneficiary table if it doesn't exist
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS beneficiary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                cbu TEXT,
+                cuit TEXT,
+                alias TEXT
+            )
+        """))
         conn.commit()
 
 

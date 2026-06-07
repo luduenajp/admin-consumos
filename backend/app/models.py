@@ -52,6 +52,14 @@ class Debtor(SQLModel, table=True):
     name: str
 
 
+class Beneficiary(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    cbu: Optional[str] = None
+    cuit: Optional[str] = None
+    alias: Optional[str] = None
+
+
 class Category(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
