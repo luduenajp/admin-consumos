@@ -13,9 +13,13 @@ import {
   fetchFxRates,
   fetchPeople,
   upsertFxRate,
+  createBeneficiary,
+  deleteBeneficiary,
+  fetchBeneficiaries,
+  updateBeneficiary,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CardStatementCreate, CurrencyCode } from '../api/types'
+import type { CardStatementCreate, CurrencyCode, Beneficiary } from '../api/types'
 import { positiveNumber } from '../utils/formValidation'
 
 /* ------------------------------------------------------------------ */
@@ -443,6 +447,171 @@ function DebtorsSection() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Beneficiaries                                                      */
+/* ------------------------------------------------------------------ */
+
+function BeneficiariesSection() {
+  const queryClient = useQueryClient()
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCbu, setEditCbu] = useState('')
+  const [editCuit, setEditCuit] = useState('')
+  const [editAlias, setEditAlias] = useState('')
+
+  const [newName, setNewName] = useState('')
+  const [newCbu, setNewCbu] = useState('')
+  const [newCuit, setNewCuit] = useState('')
+  const [newAlias, setNewAlias] = useState('')
+  const [newNameError, setNewNameError] = useState('')
+
+  const bQuery = useQuery({
+    queryKey: ['beneficiaries'],
+    queryFn: fetchBeneficiaries,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: () => createBeneficiary({
+      name: newName.trim(),
+      cbu: newCbu.trim() || undefined,
+      cuit: newCuit.trim() || undefined,
+      alias: newAlias.trim() || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] })
+      setNewName('')
+      setNewCbu('')
+      setNewCuit('')
+      setNewAlias('')
+      setNewNameError('')
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (id: number) => updateBeneficiary(id, {
+      name: editName.trim(),
+      cbu: editCbu.trim() || undefined,
+      cuit: editCuit.trim() || undefined,
+      alias: editAlias.trim() || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] })
+      setEditingId(null)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteBeneficiary(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['beneficiaries'] }),
+  })
+
+  const beneficiaries = bQuery.data ?? []
+
+  const startEdit = (b: Beneficiary) => {
+    setEditingId(b.id)
+    setEditName(b.name)
+    setEditCbu(b.cbu ?? '')
+    setEditCuit(b.cuit ?? '')
+    setEditAlias(b.alias ?? '')
+  }
+
+  return (
+    <div className="panel">
+      <div className="panelTitle">Destinatarios Frecuentes</div>
+      {beneficiaries.length === 0 ? (
+        <div className="muted">Sin destinatarios cargados</div>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>CBU</th>
+              <th>CUIT</th>
+              <th>Alias</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {beneficiaries.map((b) => (
+              <tr key={b.id}>
+                {editingId === b.id ? (
+                  <>
+                    <td>{b.id}</td>
+                    <td><input className="input" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '140px' }} /></td>
+                    <td><input className="input" value={editCbu} onChange={e => setEditCbu(e.target.value)} placeholder="CBU" style={{ width: '120px' }} /></td>
+                    <td><input className="input" value={editCuit} onChange={e => setEditCuit(e.target.value)} placeholder="CUIT" style={{ width: '120px' }} /></td>
+                    <td><input className="input" value={editAlias} onChange={e => setEditAlias(e.target.value)} placeholder="Alias" style={{ width: '120px' }} /></td>
+                    <td style={{ display: 'flex', gap: '6px' }}>
+                      <button className="button" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => updateMutation.mutate(b.id)} disabled={!editName.trim() || updateMutation.isPending} type="button">Guardar</button>
+                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => setEditingId(null)} type="button">Cancelar</button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td>{b.id}</td>
+                    <td>{b.name}</td>
+                    <td className="muted">{b.cbu ?? '—'}</td>
+                    <td className="muted">{b.cuit ?? '—'}</td>
+                    <td className="muted">{b.alias ?? '—'}</td>
+                    <td style={{ display: 'flex', gap: '6px' }}>
+                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => startEdit(b)} type="button">Editar</button>
+                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem', color: 'var(--color-danger, #dc2626)' }} onClick={() => deleteMutation.mutate(b.id)} disabled={deleteMutation.isPending} type="button">Eliminar</button>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="label">Nombre *</label>
+            <input
+              className="input"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onBlur={() => setNewNameError(newName.trim() ? '' : 'Requerido')}
+              placeholder="Ej: Verdulería Lopez"
+            />
+            {newNameError && <span className="fieldError">{newNameError}</span>}
+          </div>
+          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="label">CBU</label>
+            <input className="input" value={newCbu} onChange={e => setNewCbu(e.target.value)} placeholder="22 dígitos" />
+          </div>
+          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="label">CUIT</label>
+            <input className="input" value={newCuit} onChange={e => setNewCuit(e.target.value)} placeholder="XX-XXXXXXXX-X" />
+          </div>
+          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="label">Alias</label>
+            <input className="input" value={newAlias} onChange={e => setNewAlias(e.target.value)} placeholder="ej: verduleria.lopez" />
+          </div>
+          <button
+            className="button"
+            style={{ height: '42px' }}
+            disabled={createMutation.isPending}
+            onClick={() => {
+              if (!newName.trim()) {
+                setNewNameError('Requerido')
+                return
+              }
+              createMutation.mutate()
+            }}
+            type="button"
+          >
+            {createMutation.isPending ? 'Guardando...' : 'Agregar'}
+          </button>
+        </div>
+        {createMutation.isError && <div className="error" style={{ marginTop: '8px' }}>{extractErrorMessage(createMutation.error)}</div>}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Card Statements                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -618,6 +787,7 @@ export function AdminPage() {
         <CardsSection />
         <CardStatementsSection />
         <DebtorsSection />
+        <BeneficiariesSection />
         <FxRatesSection />
       </div>
     </section>
