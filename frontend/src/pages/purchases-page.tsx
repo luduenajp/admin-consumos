@@ -224,6 +224,13 @@ export function PurchasesPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [mobileEditId, setMobileEditId] = useState<number | null>(null)
+  const [mobileEditNotes, setMobileEditNotes] = useState<string>('')
+
+  useEffect(() => {
+    const allItems = data?.items ?? []
+    const purchase = mobileEditId !== null ? allItems.find((p) => p.id === mobileEditId) ?? null : null
+    setMobileEditNotes(purchase?.notes ?? '')
+  }, [mobileEditId, data])
 
   // Comprobante flow state
   const [comprobanteLoading, setComprobanteLoading] = useState(false)
@@ -724,7 +731,7 @@ export function PurchasesPage() {
                     onClick={() => setMobileEditId(p.id)}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setMobileEditId(p.id)}
+                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setMobileEditId(p.id)}
                   >
                     <div className="purchaseCardHeader">
                       <span className="purchaseCardDescription">{p.description}</span>
@@ -847,12 +854,12 @@ export function PurchasesPage() {
               <input
                 type="text"
                 className="input"
-                defaultValue={mobileEditPurchase.notes ?? ''}
+                value={mobileEditNotes}
                 placeholder="Agregar detalle..."
-                onBlur={(e) => {
-                  const val = e.target.value
-                  if (val !== (mobileEditPurchase.notes ?? '')) {
-                    patchMutation.mutate({ id: mobileEditPurchase.id, payload: { notes: val || null } })
+                onChange={(e) => setMobileEditNotes(e.target.value)}
+                onBlur={() => {
+                  if (mobileEditNotes !== (mobileEditPurchase.notes ?? '')) {
+                    patchMutation.mutate({ id: mobileEditPurchase.id, payload: { notes: mobileEditNotes || null } })
                   }
                 }}
               />
