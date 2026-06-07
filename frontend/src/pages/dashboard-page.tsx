@@ -156,7 +156,7 @@ export function DashboardPage() {
 
       {/* Filters Container */}
       <div className="panel" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div className="dashboard-filters">
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Mes a ver</label>
             <select
@@ -223,7 +223,7 @@ export function DashboardPage() {
               <div className="hint">Filtro por tarjeta</div>
             </div>
           )}
-          <div style={{ marginLeft: 'auto', alignSelf: 'center', display: 'flex', gap: '12px' }}>
+          <div className="dashboard-filters-actions">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="button"
@@ -532,6 +532,7 @@ export function DashboardPage() {
         ) : !debtData || debtData.length === 0 ? (
           <div className="muted">Sin deudas registradas</div>
         ) : (
+          <div className="tableContainer">
           <table className="table">
             <thead>
               <tr>
@@ -556,6 +557,7 @@ export function DashboardPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

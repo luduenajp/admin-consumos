@@ -579,6 +579,20 @@
 /*  Dashboard responsive grids                                         */
 /* ------------------------------------------------------------------ */
 
+.dashboard-filters {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.dashboard-filters-actions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  gap: 12px;
+}
+
 .dashboard-grid-2col {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -598,6 +612,16 @@
 }
 
 @media (max-width: 768px) {
+  .dashboard-filters {
+    gap: 16px;
+  }
+
+  .dashboard-filters-actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .dashboard-grid-2col {
     grid-template-columns: 1fr;
     gap: 16px;
