@@ -953,8 +953,15 @@
 /*  Import page — Mobile polish                                        */
 /* ------------------------------------------------------------------ */
 
+.importFormatSelector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
 @media (max-width: 768px) {
   .importFormatSelector {
+    display: flex;
     flex-direction: column;
     gap: 8px;
   }

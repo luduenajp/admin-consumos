@@ -131,7 +131,7 @@ export function ImportPage() {
     <section className="page">
       <h2 className="pageTitle">Importar Datos</h2>
       <div className="panel" style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <div className="importFormatSelector" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        <div className="importFormatSelector" style={{ marginBottom: '24px' }}>
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Proveedor</label>
             <select
