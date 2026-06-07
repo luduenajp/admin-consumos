@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -13,11 +13,14 @@ import {
   fetchCategories,
   autoCategorizePurchases,
   fetchImportBatches,
+  createBeneficiary,
+  uploadComprobante,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { PurchaseUpdate, Category } from '../api/types'
+import type { PurchaseUpdate, Category, ComprobanteExtraction } from '../api/types'
 import { Spinner } from '../components/Spinner'
 import { PurchaseForm } from '../components/PurchaseForm'
+import type { PurchaseFormInitialValues } from '../components/PurchaseForm'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 
 function EditableCell({
@@ -220,6 +223,20 @@ export function PurchasesPage() {
   // Manual Creation State
   const [showAddForm, setShowAddForm] = useState(false)
 
+  // Comprobante flow state
+  const [comprobanteLoading, setComprobanteLoading] = useState(false)
+  const [comprobanteError, setComprobanteError] = useState<string | null>(null)
+  const [comprobanteBanner, setComprobanteBanner] = useState<{
+    type: 'recognized' | 'unrecognized'
+    extraction: ComprobanteExtraction
+  } | null>(null)
+  const [showSaveBeneficiaryModal, setShowSaveBeneficiaryModal] = useState(false)
+  const [newBeneficiaryName, setNewBeneficiaryName] = useState('')
+  const [newBeneficiaryCbu, setNewBeneficiaryCbu] = useState('')
+  const [newBeneficiaryAlias, setNewBeneficiaryAlias] = useState('')
+  const [purchaseInitialValues, setPurchaseInitialValues] = useState<PurchaseFormInitialValues | undefined>(undefined)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Delete confirmation state
   const [pendingDelete, setPendingDelete] = useState<{ id: number; description: string } | null>(null)
 
@@ -236,6 +253,60 @@ export function PurchasesPage() {
     setBatchFilter('')
     setPage(1)
   }
+
+  const handleComprobanteFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset file input so same file can be re-selected
+    e.target.value = ''
+
+    setComprobanteError(null)
+    setComprobanteBanner(null)
+    setComprobanteLoading(true)
+
+    try {
+      const extraction = await uploadComprobante(file)
+
+      const initial: PurchaseFormInitialValues = {
+        amount_original: extraction.amount ?? undefined,
+        purchase_date: extraction.date ?? undefined,
+        currency: extraction.currency ?? 'ARS',
+        description: extraction.description ?? undefined,
+        payment_method: 'transfer',
+        installments_total: 1,
+      }
+      setPurchaseInitialValues(initial)
+      setShowAddForm(true)
+
+      if (extraction.matched_beneficiary) {
+        setComprobanteBanner({ type: 'recognized', extraction })
+      } else if (extraction.raw_extracted?.nombre) {
+        setComprobanteBanner({ type: 'unrecognized', extraction })
+        setNewBeneficiaryName(extraction.raw_extracted.nombre ?? '')
+        setNewBeneficiaryCbu(extraction.raw_extracted.cbu ?? '')
+        setNewBeneficiaryAlias(extraction.raw_extracted.alias ?? '')
+      }
+    } catch (err) {
+      setComprobanteError(extractErrorMessage(err))
+      setPurchaseInitialValues(undefined)
+      setShowAddForm(true) // open form empty for manual entry
+    } finally {
+      setComprobanteLoading(false)
+    }
+  }
+
+  const saveBeneficiaryMutation = useMutation({
+    mutationFn: () => createBeneficiary({
+      name: newBeneficiaryName.trim(),
+      cbu: newBeneficiaryCbu.trim() || undefined,
+      alias: newBeneficiaryAlias.trim() || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] })
+      setShowSaveBeneficiaryModal(false)
+      setComprobanteBanner(null)
+    },
+  })
 
   if (isLoading)
     return (
@@ -271,18 +342,87 @@ export function PurchasesPage() {
           <button type="button" className="button ghost" onClick={() => autoCategorizeMutation.mutate()} disabled={autoCategorizeMutation.isPending}>
             {autoCategorizeMutation.isPending ? 'Procesando...' : '🪄 Auto-categorizar'}
           </button>
-          <button type="button" className="button" onClick={() => setShowAddForm(!showAddForm)}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: 'none' }}
+            onChange={handleComprobanteFileChange}
+          />
+          <button
+            type="button"
+            className="button ghost"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={comprobanteLoading}
+          >
+            {comprobanteLoading ? 'Analizando...' : '📎 Desde comprobante'}
+          </button>
+          <button type="button" className="button" onClick={() => { setShowAddForm(!showAddForm); setPurchaseInitialValues(undefined); setComprobanteBanner(null) }}>
             {showAddForm ? '✕ Cancelar' : '+ Nueva compra manual'}
           </button>
         </div>
       </div>
 
+      {/* Comprobante error */}
+      {comprobanteError && (
+        <div className="error" style={{ marginBottom: '16px', padding: '12px 16px', borderRadius: '6px', background: '#fef2f2', border: '1px solid #fca5a5' }}>
+          Error al analizar comprobante: {comprobanteError}
+        </div>
+      )}
+
+      {/* Recognized banner */}
+      {comprobanteBanner?.type === 'recognized' && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', borderRadius: '6px', background: '#f0fdf4', border: '1px solid #86efac', color: '#166534' }}>
+          ✓ Destinatario reconocido: <strong>{comprobanteBanner.extraction.matched_beneficiary?.name}</strong>
+        </div>
+      )}
+
+      {/* Unrecognized banner with save option */}
+      {comprobanteBanner?.type === 'unrecognized' && !showSaveBeneficiaryModal && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', borderRadius: '6px', background: '#fefce8', border: '1px solid #fde047', color: '#854d0e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>¿Guardar "<strong>{comprobanteBanner.extraction.raw_extracted?.nombre}</strong>" como destinatario frecuente?</span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className="button" style={{ padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => setShowSaveBeneficiaryModal(true)}>Guardar</button>
+            <button type="button" className="button ghost" style={{ padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => setComprobanteBanner(null)}>Ignorar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Save beneficiary mini modal */}
+      {showSaveBeneficiaryModal && (
+        <div className="panel" style={{ marginBottom: '16px', border: '1px solid #fde047' }}>
+          <div className="panelTitle">Guardar destinatario frecuente</div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+              <label className="label">Nombre *</label>
+              <input className="input" value={newBeneficiaryName} onChange={e => setNewBeneficiaryName(e.target.value)} placeholder="Nombre del destinatario" />
+            </div>
+            <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+              <label className="label">CBU</label>
+              <input className="input" value={newBeneficiaryCbu} onChange={e => setNewBeneficiaryCbu(e.target.value)} placeholder="22 dígitos" />
+            </div>
+            <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+              <label className="label">Alias</label>
+              <input className="input" value={newBeneficiaryAlias} onChange={e => setNewBeneficiaryAlias(e.target.value)} placeholder="ej: verduleria.lopez" />
+            </div>
+          </div>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+            <button type="button" className="button" onClick={() => saveBeneficiaryMutation.mutate()} disabled={!newBeneficiaryName.trim() || saveBeneficiaryMutation.isPending}>
+              {saveBeneficiaryMutation.isPending ? 'Guardando...' : 'Confirmar'}
+            </button>
+            <button type="button" className="button ghost" onClick={() => { setShowSaveBeneficiaryModal(false); setComprobanteBanner(null); }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {showAddForm && (
         <div className="panel" style={{ marginBottom: '32px', border: '1px solid var(--color-primary)', animation: 'fadeIn 0.3s ease' }}>
-          <div className="panelTitle">Nueva compra</div>
+          <div className="panelTitle">{purchaseInitialValues ? 'Nueva compra desde comprobante' : 'Nueva compra'}</div>
           <PurchaseForm
-            onSuccess={() => setShowAddForm(false)}
-            onCancel={() => setShowAddForm(false)}
+            initialValues={purchaseInitialValues}
+            onSuccess={() => { setShowAddForm(false); setPurchaseInitialValues(undefined); setComprobanteBanner(null); }}
+            onCancel={() => { setShowAddForm(false); setPurchaseInitialValues(undefined); setComprobanteBanner(null); }}
           />
         </div>
       )}

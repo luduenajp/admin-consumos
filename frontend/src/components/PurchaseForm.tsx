@@ -13,7 +13,7 @@ import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMont
 import { getRelativeMonth } from '../utils/dates'
 import { requiredField, positiveNumber } from '../utils/formValidation'
 
-interface PurchaseFormInitialValues {
+export interface PurchaseFormInitialValues {
     amount_original?: number
     purchase_date?: string
     currency?: string
