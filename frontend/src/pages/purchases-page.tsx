@@ -439,6 +439,12 @@ export function PurchasesPage() {
         {showFilters ? '▲ Ocultar filtros' : '▼ Filtros'}
       </button>
 
+      {/* Search bar — always visible */}
+      <div className="purchaseSearchRow" style={{ marginBottom: '8px' }}>
+        <label className="label">Buscar</label>
+        <input type="text" className="input" style={{ width: '100%' }} placeholder="Descripción o detalle..." value={descriptionInput} onChange={(e) => setDescriptionInput(e.target.value)} />
+      </div>
+
       {/* Filter Panel */}
       <div
         className={`panel purchaseFiltersPanel${showFilters ? ' purchaseFiltersPanelOpen' : ''}`}
@@ -489,10 +495,6 @@ export function PurchasesPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="formRow" style={{ marginBottom: 0 }}>
-            <label className="label">Buscar</label>
-            <input type="text" className="input" style={{ width: '220px' }} placeholder="Descripción o detalle..." value={descriptionInput} onChange={(e) => setDescriptionInput(e.target.value)} />
-          </div>
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Desde</label>
             <input type="date" className="input" style={{ width: '150px' }} value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
@@ -747,7 +749,7 @@ export function PurchasesPage() {
                       {cardName && <span className="purchaseChip purchaseChipNeutral">{cardName}</span>}
                       {p.installments_total > 1 && (
                         <span className="purchaseChip purchaseChipInstallment">
-                          {p.installments_total}x
+                          {p.installments_total} cuotas
                         </span>
                       )}
                       <span className="purchaseChip purchaseChipNeutral">{p.purchase_date}</span>
