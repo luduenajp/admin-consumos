@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from datetime import date
 from typing import Optional
 
@@ -1449,14 +1450,9 @@ def update_beneficiary(*, session: Session, beneficiary_id: int, payload: Benefi
     b = session.get(Beneficiary, beneficiary_id)
     if b is None:
         raise ValueError(f"Beneficiary {beneficiary_id} not found")
-    if payload.name is not None:
-        b.name = payload.name
-    if payload.cbu is not None:
-        b.cbu = payload.cbu
-    if payload.cuit is not None:
-        b.cuit = payload.cuit
-    if payload.alias is not None:
-        b.alias = payload.alias
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(b, key, value)
     session.commit()
     session.refresh(b)
     return b
@@ -1473,7 +1469,7 @@ def delete_beneficiary(*, session: Session, beneficiary_id: int) -> None:
 def match_beneficiary(
     *,
     session: Session,
-    nombre: str | None = None,
+    name: str | None = None,
     cbu: str | None = None,
     cuit: str | None = None,
     alias: str | None = None,
@@ -1487,8 +1483,6 @@ def match_beneficiary(
     1. Exact: CBU or CUIT identical (case-sensitive digits)
     2. Fuzzy: normalized alias match OR name similarity >= 80% (difflib)
     """
-    import difflib
-
     beneficiaries = list_beneficiaries(session=session)
     if not beneficiaries:
         return None
@@ -1508,10 +1502,10 @@ def match_beneficiary(
                 return b, "fuzzy"
 
     # 3. Fuzzy: name similarity >= 80%
-    if nombre:
-        nombre_lower = nombre.lower()
+    if name:
+        name_lower = name.lower()
         for b in beneficiaries:
-            ratio = difflib.SequenceMatcher(None, nombre_lower, b.name.lower()).ratio()
+            ratio = difflib.SequenceMatcher(None, name_lower, b.name.lower()).ratio()
             if ratio >= 0.8:
                 return b, "fuzzy"
 
