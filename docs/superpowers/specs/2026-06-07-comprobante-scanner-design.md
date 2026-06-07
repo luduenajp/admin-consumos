@@ -134,6 +134,7 @@ Nueva sección al final de `/admin` con tabla de beneficiarios y formulario inli
 - **Input:** imagen o PDF enviado como contenido base64 en el mensaje.
 - **Prompt:** solicita JSON estructurado con campos `monto`, `fecha`, `moneda`, `destinatario.nombre`, `destinatario.cbu`, `destinatario.cuit`, `destinatario.alias`. Incluye instrucción de devolver `null` para campos no visibles.
 - **Parsing:** respuesta parseada como JSON. Si falla el parse, se devuelve error 502 al cliente.
+- **Seguridad de la API key:** `ANTHROPIC_API_KEY` vive solo en `.env` (excluido por `.gitignore`). Se lee desde env var en `config.py`. Nunca se loguea, nunca se incluye en respuestas de error, nunca se expone al frontend. El browser solo sube el archivo; Claude se llama server-side.
 
 ---
 
@@ -146,9 +147,9 @@ Nueva sección al final de `/admin` con tabla de beneficiarios y formulario inli
 - `backend/app/api.py` — agregar CRUD endpoints de beneficiarios
 - `backend/app/import_api.py` — agregar `POST /import/comprobante`
 - `backend/app/db.py` — agregar migración de tabla `beneficiary`
-- `backend/app/config.py` — agregar `ANTHROPIC_API_KEY`
+- `backend/app/config.py` — agregar `ANTHROPIC_API_KEY` (leída exclusivamente desde variable de entorno, nunca hardcodeada, nunca logueada)
 - `backend/requirements.txt` — agregar `anthropic`
-- `.env.example` — agregar `ANTHROPIC_API_KEY`
+- `.env.example` — agregar `ANTHROPIC_API_KEY=` (sin valor — solo el nombre)
 
 ### Frontend
 - `frontend/src/api/types.ts` — agregar `Beneficiary`, `ComprobanteExtraction`
