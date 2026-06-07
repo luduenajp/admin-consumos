@@ -44,6 +44,7 @@ export function DashboardPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [tableSearch, setTableSearch] = useState('')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [mobileTab, setMobileTab] = useState<'cuotas' | 'graficos' | 'recurrentes'>('cuotas')
   const personId = personFilter ? Number(personFilter) : undefined
   const cardId = cardFilter ? Number(cardFilter) : undefined
   const isCommon = expenseTypeFilter === 'all' ? undefined : expenseTypeFilter === 'common'
@@ -157,7 +158,7 @@ export function DashboardPage() {
       {/* Filters Container */}
       <div className="panel" style={{ padding: '24px' }}>
         <div className="dashboard-filters">
-          <div className="formRow" style={{ marginBottom: 0 }}>
+          <div className="formRow dashboard-filter-month" style={{ marginBottom: 0 }}>
             <label className="label">Mes a ver</label>
             <select
               className="input"
@@ -173,7 +174,7 @@ export function DashboardPage() {
             <div className="hint">Cuotas que vencen este mes</div>
           </div>
           {people.length > 0 && (
-            <div className="formRow" style={{ marginBottom: 0 }}>
+            <div className="formRow dashboard-filter-person" style={{ marginBottom: 0 }}>
               <label className="label">Ver gastos de</label>
               <select
                 className="input"
@@ -192,7 +193,7 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-          <div className="formRow" style={{ marginBottom: 0 }}>
+          <div className="formRow dashboard-filter-type" style={{ marginBottom: 0 }}>
             <label className="label">Tipo de gasto</label>
             <select
               className="input"
@@ -206,7 +207,7 @@ export function DashboardPage() {
             <div className="hint">Filtro por tipo de gasto</div>
           </div>
           {cards.length > 0 && (
-            <div className="formRow" style={{ marginBottom: 0 }}>
+            <div className="formRow dashboard-filter-card" style={{ marginBottom: 0 }}>
               <label className="label">Tarjeta</label>
               <select
                 className="input"
@@ -257,6 +258,55 @@ export function DashboardPage() {
       {/* KPI Summary Cards */}
       <KpiSummary yearMonth={monthFilter} personId={personId} cardId={cardId} isCommon={isCommon} />
 
+      {/* Mobile-only: Transfer card + tabs */}
+      <div className="dashboard-mobile-section">
+        {/* Transfer card — always visible on mobile */}
+        <div className="dashboard-mobile-transfer">
+          <TransferCalculationCard yearMonth={monthFilter} />
+        </div>
+
+        {/* Tab navigation */}
+        <div className="dashboard-mobile-tabs">
+          {(['cuotas', 'graficos', 'recurrentes'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              className={`dashboard-mobile-tab${mobileTab === tab ? ' active' : ''}`}
+              onClick={() => setMobileTab(tab)}
+            >
+              {tab === 'cuotas' ? 'Cuotas' : tab === 'graficos' ? 'Gráficos' : 'Recurrentes'}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        {mobileTab === 'cuotas' && <MonthlyBalanceCard yearMonth={monthFilter} />}
+        {mobileTab === 'graficos' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="panel">
+              <div className="panelTitle">Gasto por Categoría</div>
+              <CategoryChart data={categorySpendingData ?? []} categories={categoriesData ?? []} />
+            </div>
+            <div className="panel">
+              <div className="panelTitle">Cuotas Futuras</div>
+              <TimelineChart
+                data={timelineData ?? []}
+                commonData={isCommon === undefined ? timelineCommon : undefined}
+                personalData={isCommon === undefined ? timelinePersonal : undefined}
+                monthlyIncome={monthlyIncome}
+              />
+            </div>
+          </div>
+        )}
+        {mobileTab === 'recurrentes' && (
+          <div className="panel">
+            <div className="panelTitle">Gastos Recurrentes</div>
+            <RecurringExpensesCard />
+          </div>
+        )}
+      </div>
+
+      <div className="dashboard-desktop-only">
       {/* Top Cards Grid */}
       <div className="dashboard-grid-2col">
         <MonthlyBalanceCard yearMonth={monthFilter} />
@@ -560,6 +610,7 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+      </div>{/* end dashboard-desktop-only */}
 
     </section>
   )

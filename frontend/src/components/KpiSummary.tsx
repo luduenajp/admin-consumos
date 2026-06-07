@@ -76,7 +76,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
 
   if (!currentData) {
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+      <div className="kpi-grid">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="panel" style={{ padding: '20px', textAlign: 'center' }}>
             <Spinner size={20} />
@@ -87,7 +87,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+    <div className="kpi-grid">
       {/* Total gastado */}
       <div className="panel" style={{ padding: '20px' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>

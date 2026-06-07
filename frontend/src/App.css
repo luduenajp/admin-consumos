@@ -842,3 +842,109 @@
   flex-direction: column;
   gap: 16px;
 }
+
+/* ------------------------------------------------------------------ */
+/*  KPI Grid                                                           */
+/* ------------------------------------------------------------------ */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Dashboard — Mobile layout                                          */
+/* ------------------------------------------------------------------ */
+
+.dashboard-desktop-only {
+  display: contents;
+}
+
+.dashboard-mobile-section {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .dashboard-desktop-only {
+    display: none;
+  }
+
+  .dashboard-mobile-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Hide card and expense type filters on mobile */
+  .dashboard-filter-card,
+  .dashboard-filter-type {
+    display: none;
+  }
+
+  /* Style month and person selects as pills on mobile */
+  .dashboard-filter-month .input,
+  .dashboard-filter-person .input {
+    border-radius: 20px;
+    border: 2px solid var(--color-primary);
+    color: var(--color-primary);
+    font-weight: 600;
+    background: var(--color-primary-light);
+  }
+
+  /* Stack filter row to 2-column grid on mobile */
+  .dashboard-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .dashboard-filters-actions {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Mobile transfer card gradient */
+.dashboard-mobile-transfer .panel {
+  background: linear-gradient(135deg, var(--color-primary-light), #f3e8ff);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+/* Mobile tabs */
+.dashboard-mobile-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--color-bg);
+  padding: 4px;
+  border-radius: var(--radius-md);
+}
+
+.dashboard-mobile-tab {
+  flex: 1;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.dashboard-mobile-tab.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
