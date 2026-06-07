@@ -64,6 +64,10 @@ from app.crud import (
     list_card_statements,
     suggest_first_installment_month,
     upsert_card_statement,
+    list_beneficiaries,
+    create_beneficiary,
+    update_beneficiary,
+    delete_beneficiary,
 )
 from app.db import get_session
 from app.models import Category, Person, PurchasePayer
@@ -114,6 +118,9 @@ from app.schemas import (
     CardStatementCreate,
     CardStatementRead,
     SuggestMonthResponse,
+    BeneficiaryCreate,
+    BeneficiaryRead,
+    BeneficiaryUpdate,
 )
 
 router = APIRouter()
@@ -498,6 +505,45 @@ def post_debtor(payload: DebtorCreate) -> DebtorRead:
         if debtor.id is None:
             raise HTTPException(status_code=500, detail="Failed to create debtor")
         return DebtorRead(id=debtor.id, name=debtor.name)
+
+
+@router.get("/beneficiaries", response_model=list[BeneficiaryRead])
+def get_beneficiaries() -> list[BeneficiaryRead]:
+    """Return list of all beneficiaries."""
+    with get_session() as session:
+        bs = list_beneficiaries(session=session)
+        return [
+            BeneficiaryRead(id=b.id, name=b.name, cbu=b.cbu, cuit=b.cuit, alias=b.alias)
+            for b in bs if b.id is not None
+        ]
+
+
+@router.post("/beneficiaries", response_model=BeneficiaryRead, status_code=201)
+def post_beneficiary(payload: BeneficiaryCreate) -> BeneficiaryRead:
+    with get_session() as session:
+        b = create_beneficiary(session=session, payload=payload)
+        if b.id is None:
+            raise HTTPException(status_code=500, detail="Failed to create beneficiary")
+        return BeneficiaryRead(id=b.id, name=b.name, cbu=b.cbu, cuit=b.cuit, alias=b.alias)
+
+
+@router.put("/beneficiaries/{beneficiary_id}", response_model=BeneficiaryRead)
+def put_beneficiary(beneficiary_id: int, payload: BeneficiaryUpdate) -> BeneficiaryRead:
+    try:
+        with get_session() as session:
+            b = update_beneficiary(session=session, beneficiary_id=beneficiary_id, payload=payload)
+            return BeneficiaryRead(id=b.id, name=b.name, cbu=b.cbu, cuit=b.cuit, alias=b.alias)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.delete("/beneficiaries/{beneficiary_id}", status_code=204, response_model=None)
+def del_beneficiary(beneficiary_id: int) -> None:
+    try:
+        with get_session() as session:
+            delete_beneficiary(session=session, beneficiary_id=beneficiary_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/reports/debts", response_model=list[DebtSummaryRow])

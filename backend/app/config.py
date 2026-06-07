@@ -30,3 +30,7 @@ def get_cors_origins() -> list[str]:
 
 def get_auth_credentials() -> tuple[str, str]:
     return os.environ.get("APP_USERNAME", ""), os.environ.get("APP_PASSWORD", "")
+
+
+def get_anthropic_api_key() -> str | None:
+    return os.environ.get("ANTHROPIC_API_KEY")
