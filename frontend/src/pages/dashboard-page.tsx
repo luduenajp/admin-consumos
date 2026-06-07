@@ -161,7 +161,6 @@ export function DashboardPage() {
             <label className="label">Mes a ver</label>
             <select
               className="input"
-              style={{ width: '180px' }}
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
             >
@@ -178,7 +177,6 @@ export function DashboardPage() {
               <label className="label">Ver gastos de</label>
               <select
                 className="input"
-                style={{ width: '200px' }}
                 value={personFilter}
                 onChange={(e) => setPersonFilter(e.target.value)}
               >
@@ -198,7 +196,6 @@ export function DashboardPage() {
             <label className="label">Tipo de gasto</label>
             <select
               className="input"
-              style={{ width: '180px' }}
               value={expenseTypeFilter}
               onChange={(e) => setExpenseTypeFilter(e.target.value)}
             >
@@ -213,7 +210,6 @@ export function DashboardPage() {
               <label className="label">Tarjeta</label>
               <select
                 className="input"
-                style={{ width: '220px' }}
                 value={cardFilter}
                 onChange={(e) => setCardFilter(e.target.value)}
               >
@@ -262,13 +258,13 @@ export function DashboardPage() {
       <KpiSummary yearMonth={monthFilter} personId={personId} cardId={cardId} isCommon={isCommon} />
 
       {/* Top Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+      <div className="dashboard-grid-2col">
         <MonthlyBalanceCard yearMonth={monthFilter} />
         <TransferCalculationCard yearMonth={monthFilter} />
       </div>
 
       {/* Top 5 + Resumen del mes */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) 1fr', gap: '24px' }}>
+      <div className="dashboard-grid-sidebar">
         {/* Top 5 gastos */}
         <div className="panel">
           <div className="panelTitle">Top 5 Gastos</div>
@@ -334,7 +330,7 @@ export function DashboardPage() {
               placeholder="Buscar en tabla..."
               value={tableSearch}
               onChange={(e) => setTableSearch(e.target.value)}
-              style={{ width: '220px', fontSize: '0.85rem' }}
+              style={{ maxWidth: '220px', fontSize: '0.85rem' }}
             />
           </div>
           {monthBreakdownLoading ? (
@@ -483,7 +479,7 @@ export function DashboardPage() {
       </div>
 
       {/* Charts Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '24px' }}>
+      <div className="dashboard-grid-charts">
         {/* Category Chart Panel */}
         <div className="panel">
           <div className="panelTitle">Gasto por Categoria ({monthOptions.find((m) => m.value === monthFilter)?.label ?? monthFilter})</div>

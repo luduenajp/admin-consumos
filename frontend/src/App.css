@@ -574,3 +574,42 @@
     font-size: 0.85rem;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Dashboard responsive grids                                         */
+/* ------------------------------------------------------------------ */
+
+.dashboard-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 32px;
+}
+
+.dashboard-grid-sidebar {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) 1fr;
+  gap: 24px;
+}
+
+.dashboard-grid-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid-2col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .dashboard-grid-sidebar {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .dashboard-grid-charts {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
