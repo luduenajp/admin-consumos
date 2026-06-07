@@ -564,49 +564,61 @@ function BeneficiariesSection() {
       {beneficiaries.length === 0 ? (
         <div className="muted">Sin destinatarios cargados</div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-              <th>CBU</th>
-              <th>CUIT</th>
-              <th>Alias</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {beneficiaries.map((b) => (
-              <tr key={b.id}>
-                {editingId === b.id ? (
-                  <>
-                    <td>{b.id}</td>
-                    <td><input className="input" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '140px' }} /></td>
-                    <td><input className="input" value={editCbu} onChange={e => setEditCbu(e.target.value)} placeholder="CBU" style={{ width: '120px' }} /></td>
-                    <td><input className="input" value={editCuit} onChange={e => setEditCuit(e.target.value)} placeholder="CUIT" style={{ width: '120px' }} /></td>
-                    <td><input className="input" value={editAlias} onChange={e => setEditAlias(e.target.value)} placeholder="Alias" style={{ width: '120px' }} /></td>
-                    <td style={{ display: 'flex', gap: '6px' }}>
-                      <button className="button" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => updateMutation.mutate(b.id)} disabled={!editName.trim() || updateMutation.isPending} type="button">Guardar</button>
-                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => setEditingId(null)} type="button">Cancelar</button>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td>{b.id}</td>
-                    <td>{b.name}</td>
-                    <td className="muted">{b.cbu ?? '—'}</td>
-                    <td className="muted">{b.cuit ?? '—'}</td>
-                    <td className="muted">{b.alias ?? '—'}</td>
-                    <td style={{ display: 'flex', gap: '6px' }}>
-                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => startEdit(b)} type="button">Editar</button>
-                      <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem', color: 'var(--color-danger, #dc2626)' }} onClick={() => deleteMutation.mutate(b.id)} disabled={deleteMutation.isPending} type="button">Eliminar</button>
-                    </td>
-                  </>
-                )}
+        <>
+          <table className="table adminEntityTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>CBU</th>
+                <th>CUIT</th>
+                <th>Alias</th>
+                <th></th>
               </tr>
+            </thead>
+            <tbody>
+              {beneficiaries.map((b) => (
+                <tr key={b.id}>
+                  {editingId === b.id ? (
+                    <>
+                      <td>{b.id}</td>
+                      <td><input className="input" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '140px' }} /></td>
+                      <td><input className="input" value={editCbu} onChange={e => setEditCbu(e.target.value)} placeholder="CBU" style={{ width: '120px' }} /></td>
+                      <td><input className="input" value={editCuit} onChange={e => setEditCuit(e.target.value)} placeholder="CUIT" style={{ width: '120px' }} /></td>
+                      <td><input className="input" value={editAlias} onChange={e => setEditAlias(e.target.value)} placeholder="Alias" style={{ width: '120px' }} /></td>
+                      <td style={{ display: 'flex', gap: '6px' }}>
+                        <button className="button" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => updateMutation.mutate(b.id)} disabled={!editName.trim() || updateMutation.isPending} type="button">Guardar</button>
+                        <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => setEditingId(null)} type="button">Cancelar</button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{b.id}</td>
+                      <td>{b.name}</td>
+                      <td className="muted">{b.cbu ?? '—'}</td>
+                      <td className="muted">{b.cuit ?? '—'}</td>
+                      <td className="muted">{b.alias ?? '—'}</td>
+                      <td style={{ display: 'flex', gap: '6px' }}>
+                        <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => startEdit(b)} type="button">Editar</button>
+                        <button className="button ghost" style={{ padding: '4px 10px', fontSize: '0.8rem', color: 'var(--color-danger, #dc2626)' }} onClick={() => deleteMutation.mutate(b.id)} disabled={deleteMutation.isPending} type="button">Eliminar</button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="adminCardList">
+            {beneficiaries.map((b) => (
+              <div key={b.id} className="adminCard">
+                <span className="adminCardName">{b.name}</span>
+                <span className="adminCardMeta">
+                  {b.alias ? b.alias : b.cbu ? `CBU: ${b.cbu.slice(-4)}` : `ID: ${b.id}`}
+                </span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
