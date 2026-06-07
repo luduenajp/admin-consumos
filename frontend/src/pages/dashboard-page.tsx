@@ -42,6 +42,7 @@ export function DashboardPage() {
   const [monthFilter, setMonthFilter] = useState<string>(() => getCurrentYearMonth())
   const [expenseTypeFilter, setExpenseTypeFilter] = useState<string>('all')
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showTransferForm, setShowTransferForm] = useState(false)
   const [tableSearch, setTableSearch] = useState('')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const [mobileTab, setMobileTab] = useState<'cuotas' | 'graficos' | 'recurrentes'>('cuotas')
@@ -226,11 +227,24 @@ export function DashboardPage() {
           )}
           <div className="dashboard-filters-actions">
             <button
-              onClick={() => setShowAddForm(!showAddForm)}
+              onClick={() => {
+                setShowAddForm(!showAddForm)
+                if (!showAddForm) setShowTransferForm(false)
+              }}
               className="button"
               style={{ background: 'var(--color-primary)', color: 'white' }}
             >
               {showAddForm ? '✕ Cancelar' : '+ Nueva compra'}
+            </button>
+            <button
+              onClick={() => {
+                setShowTransferForm(!showTransferForm)
+                if (!showTransferForm) setShowAddForm(false)
+              }}
+              className="button"
+              style={{ background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-primary)' }}
+            >
+              {showTransferForm ? '✕ Cancelar' : '+ Nueva transferencia'}
             </button>
             <button
               onClick={() => {
@@ -251,6 +265,16 @@ export function DashboardPage() {
           <PurchaseForm
             onSuccess={() => setShowAddForm(false)}
             onCancel={() => setShowAddForm(false)}
+          />
+        </div>
+      )}
+      {showTransferForm && (
+        <div className="panel" style={{ border: '1px solid var(--color-primary)', animation: 'fadeIn 0.3s ease' }}>
+          <div className="panelTitle">Nueva transferencia</div>
+          <PurchaseForm
+            initialValues={{ payment_method: 'transfer' }}
+            onSuccess={() => setShowTransferForm(false)}
+            onCancel={() => setShowTransferForm(false)}
           />
         </div>
       )}
