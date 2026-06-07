@@ -915,7 +915,7 @@
 
 /* Mobile transfer card gradient */
 .dashboard-mobile-transfer .panel {
-  background: linear-gradient(135deg, var(--color-primary-light), #f3e8ff);
+  background: linear-gradient(135deg, var(--color-primary-light), rgba(139, 92, 246, 0.12));
   border-color: rgba(99, 102, 241, 0.2);
 }
 
