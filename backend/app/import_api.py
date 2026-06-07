@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +9,8 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlmodel import select
 
-from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches
+from app.config import get_anthropic_api_key
+from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches, match_beneficiary
 from app.db import get_session
 from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
 from app.schemas import GSheetsImportRequest, ImportBatchRead, PurchaseCreate
@@ -22,6 +25,29 @@ from app.importers.visa_xlsx import (
     was_already_imported,
 )
 from app.utils_dates import add_months
+
+
+ALLOWED_MIME_TYPES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp",
+    "application/pdf",
+}
+
+EXTRACTION_PROMPT = """Analizá este comprobante de transferencia bancaria. Extraé los siguientes datos en formato JSON:
+
+{
+  "monto": <número flotante con el monto de la transferencia>,
+  "fecha": "<fecha en formato YYYY-MM-DD>",
+  "moneda": "<ARS o USD>",
+  "destinatario": {
+    "nombre": "<nombre del destinatario o null>",
+    "cbu": "<CBU de 22 dígitos o null>",
+    "cuit": "<CUIT/CUIL con o sin guiones o null>",
+    "alias": "<alias CVU/CBU o null>"
+  }
+}
+
+Si algún campo no es visible en el comprobante, usá null para ese campo.
+Devolvé SOLO el JSON válido, sin texto adicional, sin markdown, sin explicaciones."""
 
 
 def _has_installment_schedule(*, session, purchase_id: int, year_month: str, installment_index: int) -> bool:
@@ -405,6 +431,117 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
         auto_categorize_purchases(session=session)
 
     return {"created": created, "skipped": skipped, "parsed": len(rows), "batch_id": batch_id}
+
+
+@router.post("/import/comprobante")
+async def post_comprobante(file: UploadFile = File(...)) -> dict:
+    # Validate file type
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tipo de archivo no soportado: {content_type}. Use imagen o PDF."
+        )
+
+    # Check API key
+    api_key = get_anthropic_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="ANTHROPIC_API_KEY no configurada. Configurá la variable de entorno."
+        )
+
+    # Read file bytes
+    file_bytes = await file.read()
+    file_b64 = base64.b64encode(file_bytes).decode()
+
+    # Determine media type for Claude
+    media_type = content_type  # e.g. "image/png" or "application/pdf"
+
+    # Call Claude Vision API
+    try:
+        import anthropic as anthropic_sdk
+        client = anthropic_sdk.Anthropic(api_key=api_key)
+
+        if media_type == "application/pdf":
+            source = {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": file_b64,
+            }
+            content_block = {"type": "document", "source": source}
+        else:
+            source = {
+                "type": "base64",
+                "media_type": media_type,
+                "data": file_b64,
+            }
+            content_block = {"type": "image", "source": source}
+
+        message = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        content_block,
+                        {"type": "text", "text": EXTRACTION_PROMPT},
+                    ],
+                }
+            ],
+        )
+        raw_text = message.content[0].text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error al llamar a Claude API: {str(e)}"
+        )
+
+    # Parse JSON response
+    try:
+        extracted = json.loads(raw_text.strip())
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Respuesta de Claude no es JSON válido: {raw_text[:200]}"
+        )
+
+    destinatario = extracted.get("destinatario") or {}
+    nombre = destinatario.get("nombre")
+    cbu = destinatario.get("cbu")
+    cuit = destinatario.get("cuit")
+    alias = destinatario.get("alias")
+
+    # Match beneficiary
+    matched = None
+    with get_session() as session:
+        result = match_beneficiary(
+            session=session,
+            name=nombre,
+            cbu=cbu,
+            cuit=cuit,
+            alias=alias,
+        )
+        if result:
+            b, confidence = result
+            matched = {"id": b.id, "name": b.name, "confidence": confidence}
+
+    return {
+        "amount": extracted.get("monto"),
+        "date": extracted.get("fecha"),
+        "currency": extracted.get("moneda", "ARS"),
+        "description": nombre,
+        "matched_beneficiary": matched,
+        "raw_extracted": {
+            "nombre": nombre,
+            "cbu": cbu,
+            "cuit": cuit,
+            "alias": alias,
+        },
+    }
 
 
 @router.get("/import/batches", response_model=list[ImportBatchRead])
