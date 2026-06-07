@@ -7,9 +7,12 @@ import {
     fetchCategories,
     createPurchase,
     fetchSuggestMonth,
+    uploadComprobante,
+    createBeneficiary,
 } from '../api/endpoints'
 import { extractErrorMessage } from '../api/http'
-import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMonthResponse } from '../api/types'
+import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMonthResponse, ComprobanteExtraction } from '../api/types'
+import { Spinner } from './Spinner'
 import { getRelativeMonth } from '../utils/dates'
 import { requiredField, positiveNumber } from '../utils/formValidation'
 
@@ -53,6 +56,11 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
         initialValues?.amount_original != null ? String(initialValues.amount_original) : ''
     )
     const [errors, setErrors] = useState<Record<string, string>>({})
+    const [parseStatus, setParseStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+    const [parseResult, setParseResult] = useState<ComprobanteExtraction | null>(null)
+    const [autofilled, setAutofilled] = useState<Set<string>>(new Set())
+    const [saveBeneficiaryStatus, setSaveBeneficiaryStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const [previewName, setPreviewName] = useState<string | null>(null)
 
     const { data: people = [] } = useQuery({ queryKey: ['people'], queryFn: fetchPeople })
     const { data: cards = [] } = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
@@ -118,6 +126,68 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
         setErrors(e => ({ ...e, [field]: validateField(field) }))
     }
 
+    async function handleComprobanteChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setPreviewName(file.name)
+        setParseStatus('loading')
+        setParseResult(null)
+        setAutofilled(new Set())
+        setSaveBeneficiaryStatus('idle')
+
+        try {
+            const result = await uploadComprobante(file)
+            setParseResult(result)
+            setParseStatus('done')
+
+            const filled = new Set<string>()
+
+            if (result.amount != null) {
+                const amtStr = String(result.amount)
+                setAmountInputValue(amtStr)
+                setFormData(prev => ({ ...prev, amount_original: amtStr }))
+                filled.add('amount_original')
+            }
+            if (result.date) {
+                setFormData(prev => ({ ...prev, purchase_date: result.date! }))
+                filled.add('purchase_date')
+            }
+            if (result.currency === 'USD') {
+                setFormData(prev => ({ ...prev, currency: 'USD' }))
+                filled.add('currency')
+            }
+            const autoDesc = result.matched_beneficiary?.name ?? result.raw_extracted.nombre ?? result.description
+            if (autoDesc) {
+                setFormData(prev => ({ ...prev, description: autoDesc }))
+                filled.add('description')
+            }
+
+            setAutofilled(filled)
+        } catch {
+            setParseStatus('error')
+        }
+    }
+
+    async function handleSaveBeneficiary() {
+        if (!parseResult) return
+        const nombre = parseResult.raw_extracted.nombre
+        if (!nombre) return
+
+        setSaveBeneficiaryStatus('saving')
+        try {
+            await createBeneficiary({
+                name: nombre,
+                cbu: parseResult.raw_extracted.cbu ?? undefined,
+                alias: parseResult.raw_extracted.alias ?? undefined,
+                cuit: parseResult.raw_extracted.cuit ?? undefined,
+            })
+            setSaveBeneficiaryStatus('saved')
+        } catch {
+            setSaveBeneficiaryStatus('idle')
+        }
+    }
+
     function validateAll(): Record<string, string> {
         return {
             description: validateField('description'),
@@ -170,8 +240,77 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
 
     const installmentAmount = (parseFloat(formData.amount_original) || 0) / (parseInt(formData.installments_total) || 1)
 
+    const AutoBadge = ({ field }: { field: string }) =>
+        autofilled.has(field) ? (
+            <span style={{ fontSize: '11px', color: 'var(--color-primary)', background: 'rgba(192,105,59,0.12)', padding: '1px 6px', borderRadius: '8px', marginLeft: '6px', verticalAlign: 'middle' }}>
+                ✓ auto
+            </span>
+        ) : null
+
     return (
         <form onSubmit={handleSubmit} className="purchase-form">
+            {/* Comprobante upload section */}
+            <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--color-bg)', border: '1px dashed var(--color-border)', borderRadius: '8px' }}>
+                <label className="label" style={{ display: 'block', marginBottom: '8px' }}>
+                    Comprobante (opcional)
+                </label>
+                <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    capture="environment"
+                    className="input"
+                    style={{ fontSize: '14px' }}
+                    onChange={handleComprobanteChange}
+                    disabled={parseStatus === 'loading'}
+                />
+
+                {parseStatus === 'loading' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                        <Spinner size={16} />
+                        <span className="muted" style={{ fontSize: '13px' }}>Leyendo comprobante...</span>
+                    </div>
+                )}
+
+                {parseStatus === 'done' && previewName && (
+                    <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                        {previewName}
+                    </div>
+                )}
+
+                {parseStatus === 'error' && (
+                    <div className="error" style={{ marginTop: '8px', fontSize: '13px' }}>
+                        No se pudo leer el comprobante. Completá los campos manualmente.
+                    </div>
+                )}
+
+                {parseStatus === 'done' &&
+                    parseResult?.matched_beneficiary === null &&
+                    parseResult?.raw_extracted.nombre && (
+                    <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {saveBeneficiaryStatus === 'saved' ? (
+                            <span style={{ fontSize: '13px', color: 'var(--color-primary)', background: 'rgba(192,105,59,0.1)', padding: '4px 10px', borderRadius: '12px' }}>
+                                ✓ Guardado como destinatario frecuente
+                            </span>
+                        ) : (
+                            <>
+                                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                                    ¿Guardar <strong>{parseResult.raw_extracted.nombre}</strong> como destinatario frecuente?
+                                </span>
+                                <button
+                                    type="button"
+                                    className="button"
+                                    style={{ fontSize: '12px', padding: '4px 10px', background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-primary)' }}
+                                    onClick={handleSaveBeneficiary}
+                                    disabled={saveBeneficiaryStatus === 'saving'}
+                                >
+                                    {saveBeneficiaryStatus === 'saving' ? 'Guardando...' : 'Guardar'}
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
             <div className="purchase-form-grid">
                 <div className="formRow">
                     <label className="label">Medio de pago</label>
@@ -225,7 +364,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
                 </div>
 
                 <div className="formRow">
-                    <label className="label">Fecha compra</label>
+                    <label className="label">Fecha compra <AutoBadge field="purchase_date" /></label>
                     <input
                         type="date"
                         className="input"
@@ -235,7 +374,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
                 </div>
 
                 <div className="formRow span-2">
-                    <label className="label">Descripción</label>
+                    <label className="label">Descripción <AutoBadge field="description" /></label>
                     <input
                         type="text"
                         className="input"
@@ -249,7 +388,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
 
                 <div className="formRow">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <label className="label" style={{ margin: 0 }}>Monto</label>
+                        <label className="label" style={{ margin: 0 }}>Monto <AutoBadge field="amount_original" /></label>
                         {formData.payment_method === 'card' && (
                             <div style={{ display: 'flex', gap: '4px', background: '#f0f0f0', padding: '2px', borderRadius: '4px' }}>
                                 <button
