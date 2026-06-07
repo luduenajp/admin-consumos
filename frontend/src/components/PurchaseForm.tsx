@@ -13,22 +13,32 @@ import type { CurrencyCode, PaymentMethod, PurchaseCreate, Category, SuggestMont
 import { getRelativeMonth } from '../utils/dates'
 import { requiredField, positiveNumber } from '../utils/formValidation'
 
+interface PurchaseFormInitialValues {
+    amount_original?: number
+    purchase_date?: string
+    currency?: string
+    description?: string
+    payment_method?: string
+    installments_total?: number
+}
+
 interface PurchaseFormProps {
     onSuccess?: () => void
     onCancel?: () => void
+    initialValues?: PurchaseFormInitialValues
 }
 
-export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
+export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFormProps) {
     const queryClient = useQueryClient()
 
     const [formData, setFormData] = useState({
-        purchase_date: new Date().toISOString().split('T')[0],
-        description: '',
-        payment_method: 'cash' as PaymentMethod,
+        purchase_date: initialValues?.purchase_date ?? new Date().toISOString().split('T')[0],
+        description: initialValues?.description ?? '',
+        payment_method: (initialValues?.payment_method ?? 'cash') as PaymentMethod,
         amount_original: '',
-        currency: 'ARS' as CurrencyCode,
+        currency: (initialValues?.currency ?? 'ARS') as CurrencyCode,
         card_id: '',
-        installments_total: '1',
+        installments_total: String(initialValues?.installments_total ?? '1'),
         first_installment_month: getRelativeMonth(0),
         owner_person_id: '',
         debtor_id: '',
@@ -39,7 +49,9 @@ export function PurchaseForm({ onSuccess, onCancel }: PurchaseFormProps) {
     })
 
     const [amountInputMode, setAmountInputMode] = useState<'total' | 'installment'>('total')
-    const [amountInputValue, setAmountInputValue] = useState('')
+    const [amountInputValue, setAmountInputValue] = useState(
+        initialValues?.amount_original != null ? String(initialValues.amount_original) : ''
+    )
     const [errors, setErrors] = useState<Record<string, string>>({})
 
     const { data: people = [] } = useQuery({ queryKey: ['people'], queryFn: fetchPeople })
