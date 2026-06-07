@@ -1,4 +1,4 @@
-import { deleteHttp, getJson, patchJson, postForm, postJson } from './http'
+import { deleteHttp, getJson, patchJson, postForm, postJson, putJson } from './http'
 import type {
   Card,
   Category,
@@ -42,6 +42,10 @@ import type {
   CardStatement,
   CardStatementCreate,
   SuggestMonthResponse,
+  Beneficiary,
+  BeneficiaryCreate,
+  BeneficiaryUpdate,
+  ComprobanteExtraction,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -377,4 +381,27 @@ export function fetchSuggestMonth(cardId: number, purchaseDate: string): Promise
   return getJson<SuggestMonthResponse>(
     `/api/card-statements/suggest-month?card_id=${cardId}&purchase_date=${purchaseDate}`
   )
+}
+
+// Beneficiaries
+export function fetchBeneficiaries(): Promise<Beneficiary[]> {
+  return getJson<Beneficiary[]>('/api/beneficiaries')
+}
+
+export function createBeneficiary(payload: BeneficiaryCreate): Promise<Beneficiary> {
+  return postJson<Beneficiary>('/api/beneficiaries', payload)
+}
+
+export function updateBeneficiary(id: number, payload: BeneficiaryUpdate): Promise<Beneficiary> {
+  return putJson<Beneficiary>(`/api/beneficiaries/${id}`, payload)
+}
+
+export function deleteBeneficiary(id: number): Promise<void> {
+  return deleteHttp(`/api/beneficiaries/${id}`)
+}
+
+export function uploadComprobante(file: File): Promise<ComprobanteExtraction> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return postForm<ComprobanteExtraction>('/api/import/comprobante', formData)
 }

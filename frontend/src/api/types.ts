@@ -410,3 +410,45 @@ export interface SuggestMonthResponse {
   closing_date: string | null
   fallback: boolean
 }
+
+export interface Beneficiary {
+  id: number
+  name: string
+  cbu?: string | null
+  alias?: string | null
+  cuit?: string | null
+}
+
+export interface BeneficiaryCreate {
+  name: string
+  cbu?: string | null
+  cuit?: string | null
+  alias?: string | null
+}
+
+export interface BeneficiaryUpdate {
+  name?: string
+  cbu?: string | null
+  cuit?: string | null
+  alias?: string | null
+}
+
+export interface MatchedBeneficiary {
+  id: number
+  name: string
+  confidence: 'exact' | 'fuzzy'
+}
+
+export interface ComprobanteExtraction {
+  amount: number | null
+  date: string | null
+  currency: string
+  description: string | null
+  matched_beneficiary: MatchedBeneficiary | null
+  raw_extracted: {
+    nombre: string | null
+    cbu: string | null
+    cuit: string | null
+    alias: string | null
+  }
+}

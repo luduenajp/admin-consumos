@@ -50,6 +50,16 @@ export async function patchJson<T>(input: RequestInfo, body: unknown): Promise<T
   })
 }
 
+export async function putJson<T>(input: RequestInfo, body: unknown): Promise<T> {
+  return getJson<T>(input, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
 export async function postForm<T>(input: RequestInfo, formData: FormData): Promise<T> {
   return getJson<T>(input, {
     method: 'POST',
