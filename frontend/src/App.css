@@ -676,3 +676,169 @@
     gap: 16px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Purchases — Mobile filter toggle                                   */
+/* ------------------------------------------------------------------ */
+
+.purchaseMobileFilterToggle {
+  display: none;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .purchaseMobileFilterToggle {
+    display: block;
+  }
+
+  .purchaseFiltersPanel {
+    display: none;
+  }
+
+  .purchaseFiltersPanel.purchaseFiltersPanelOpen {
+    display: block;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Purchases — Mobile card list                                       */
+/* ------------------------------------------------------------------ */
+
+.purchaseCardList {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .purchaseDesktopTable {
+    display: none;
+  }
+
+  .purchaseCardList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+.purchaseCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+
+.purchaseCard:active {
+  transform: scale(0.99);
+  box-shadow: var(--shadow-sm);
+}
+
+.purchaseCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.purchaseCardDescription {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.purchaseCardAmount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.purchaseCardChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.purchaseChip {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.purchaseChipNeutral {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.purchaseChipInstallment {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 700;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Purchases — Mobile edit sheet                                      */
+/* ------------------------------------------------------------------ */
+
+.purchaseMobileEditOverlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .purchaseMobileEditOverlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 2000;
+    animation: overlayFadeIn 0.2s ease;
+  }
+}
+
+.purchaseMobileEditSheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: sheetSlideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.purchaseMobileEditHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+}
+
+.purchaseMobileEditBody {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

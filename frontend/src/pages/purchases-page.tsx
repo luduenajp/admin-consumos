@@ -222,6 +222,8 @@ export function PurchasesPage() {
 
   // Manual Creation State
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [mobileEditId, setMobileEditId] = useState<number | null>(null)
 
   // Comprobante flow state
   const [comprobanteLoading, setComprobanteLoading] = useState(false)
@@ -317,6 +319,7 @@ export function PurchasesPage() {
   if (error) return <div className="error">Error: {extractErrorMessage(error)}</div>
 
   const items = data?.items ?? []
+  const mobileEditPurchase = mobileEditId !== null ? items.find((p) => p.id === mobileEditId) ?? null : null
   // Client-side debtor filter (backend doesn't have this filter yet)
   let rows = items
   if (debtorFilter === 'none') {
@@ -427,8 +430,20 @@ export function PurchasesPage() {
         </div>
       )}
 
+      {/* Mobile filter toggle — hidden on desktop via CSS */}
+      <button
+        type="button"
+        className="button ghost purchaseMobileFilterToggle"
+        onClick={() => setShowFilters((s) => !s)}
+      >
+        {showFilters ? '▲ Ocultar filtros' : '▼ Filtros'}
+      </button>
+
       {/* Filter Panel */}
-      <div className="panel" style={{ padding: '24px', marginBottom: '32px' }}>
+      <div
+        className={`panel purchaseFiltersPanel${showFilters ? ' purchaseFiltersPanelOpen' : ''}`}
+        style={{ padding: '24px', marginBottom: '32px' }}
+      >
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '24px' }}>
           <div className="formRow" style={{ marginBottom: 0 }}>
             <label className="label">Pagado por</label>
@@ -508,225 +523,256 @@ export function PurchasesPage() {
           Resultados{' '}
           {debtorFilter ? `(${rows.length} en esta página)` : total > 0 ? `(${total} en total)` : ''}
         </div>
-        {
-          rows.length === 0 ? (
-            <div className="muted">Sin compras que coincidan con los filtros</div>
-          ) : (
-            <>
-              <div className="tableContainer">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Tipo</th>
-                      <th style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', opacity: 0.8 }}>Común</span>
-                          <input
-                            type="checkbox"
-                            title="Seleccionar todos como común/no común"
-                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                            checked={rows.length > 0 && rows.every(r => r.is_common)}
-                            ref={el => {
-                              if (el) {
-                                const someChecked = rows.some(r => r.is_common);
-                                const allChecked = rows.every(r => r.is_common);
-                                el.indeterminate = someChecked && !allChecked;
-                              }
-                            }}
-                            onChange={(e) => {
-                              const ids = rows.map(r => r.id);
-                              bulkMutation.mutate({ ids, update: { is_common: e.target.checked } });
-                            }}
-                          />
+        {rows.length === 0 ? (
+          <div className="muted">Sin compras que coincidan con los filtros</div>
+        ) : (
+          <>
+            {/* Desktop table */}
+            <div className="tableContainer purchaseDesktopTable">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', opacity: 0.8 }}>Común</span>
+                        <input
+                          type="checkbox"
+                          title="Seleccionar todos como común/no común"
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                          checked={rows.length > 0 && rows.every(r => r.is_common)}
+                          ref={el => {
+                            if (el) {
+                              const someChecked = rows.some(r => r.is_common);
+                              const allChecked = rows.every(r => r.is_common);
+                              el.indeterminate = someChecked && !allChecked;
+                            }
+                          }}
+                          onChange={(e) => {
+                            const ids = rows.map(r => r.id);
+                            bulkMutation.mutate({ ids, update: { is_common: e.target.checked } });
+                          }}
+                        />
+                      </div>
+                    </th>
+                    <th>Descripción</th>
+                    <th>Categoría</th>
+                    <th>Pagó</th>
+                    <th>Detalle</th>
+                    <th>Moneda</th>
+                    <th>Monto</th>
+                    <th>Cuotas</th>
+                    <th>Beneficiario</th>
+                    <th>Deudor</th>
+                    <th>Saldado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.purchase_date}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ fontSize: '0.85rem' }}>
+                            {p.payment_method === 'transfer' ? 'Transferencia' :
+                              p.payment_method === 'cash' ? 'Efectivo' :
+                                (p.card_id ? (cardNameById.get(p.card_id) ?? `#${p.card_id}`) : '-')}
+                          </span>
                         </div>
-                      </th>
-                      <th>Descripción</th>
-                      <th>Categoría</th>
-                      <th>Pagó</th>
-                      <th>Detalle</th>
-                      <th>Moneda</th>
-                      <th>Monto</th>
-                      <th>Cuotas</th>
-                      <th>Beneficiario</th>
-                      <th>Deudor</th>
-                      <th>Saldado</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((p) => (
-                      <tr key={p.id}>
-                        <td>{p.purchase_date}</td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.85rem' }}>
-                              {p.payment_method === 'transfer' ? 'Transferencia' :
-                                p.payment_method === 'cash' ? 'Efectivo' :
-                                  (p.card_id ? (cardNameById.get(p.card_id) ?? `#${p.card_id}`) : '-')}
-                            </span>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={p.is_common}
-                            title="Marcar como gasto común"
-                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                            onChange={(e) => {
-                              patchMutation.mutate({ id: p.id, payload: { is_common: e.target.checked } })
-                            }}
-                          />
-                        </td>
-                        <td>{p.description}</td>
-                        <td>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={p.is_common}
+                          title="Marcar como gasto común"
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          onChange={(e) => {
+                            patchMutation.mutate({ id: p.id, payload: { is_common: e.target.checked } })
+                          }}
+                        />
+                      </td>
+                      <td>{p.description}</td>
+                      <td>
+                        <select
+                          className="input"
+                          style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                          value={p.category ?? ''}
+                          onChange={(e) => {
+                            patchMutation.mutate({ id: p.id, payload: { category: e.target.value || null } })
+                          }}
+                        >
+                          <option value="">-</option>
+                          {categoriesData?.map((cat) => (
+                            <option key={cat.id} value={cat.name}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>{formatPayers(p.payers)}</td>
+                      <td>
+                        <EditableCell
+                          value={p.notes}
+                          placeholder="Agregar detalle..."
+                          onSave={(val) => {
+                            if (val !== (p.notes ?? '')) {
+                              patchMutation.mutate({ id: p.id, payload: { notes: val || null } })
+                            }
+                          }}
+                        />
+                      </td>
+                      <td>{p.currency}</td>
+                      <td>
+                        {p.amount_original.toLocaleString('es-AR', {
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td>{p.installments_total}</td>
+                      <td>
+                        {!p.is_common ? (
                           <select
                             className="input"
                             style={{ padding: '4px 8px', fontSize: '0.85rem' }}
-                            value={p.category ?? ''}
+                            value={p.beneficiary_person_id ?? ''}
                             onChange={(e) => {
-                              patchMutation.mutate({ id: p.id, payload: { category: e.target.value || null } })
-                            }}
-                          >
-                            <option value="">-</option>
-                            {categoriesData?.map((cat) => (
-                              <option key={cat.id} value={cat.name}>
-                                {cat.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>{formatPayers(p.payers)}</td>
-                        <td>
-                          <EditableCell
-                            value={p.notes}
-                            placeholder="Agregar detalle..."
-                            onSave={(val) => {
-                              if (val !== (p.notes ?? '')) {
-                                patchMutation.mutate({ id: p.id, payload: { notes: val || null } })
-                              }
-                            }}
-                          />
-                        </td>
-                        <td>{p.currency}</td>
-                        <td>
-                          {p.amount_original.toLocaleString('es-AR', {
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td>{p.installments_total}</td>
-                        <td>
-                          {!p.is_common ? (
-                            <select
-                              className="input"
-                              style={{ padding: '4px 8px', fontSize: '0.85rem' }}
-                              value={p.beneficiary_person_id ?? ''}
-                              onChange={(e) => {
-                                const newBenId = e.target.value ? Number(e.target.value) : null
-                                patchMutation.mutate({
-                                  id: p.id,
-                                  payload: { beneficiary_person_id: newBenId },
-                                })
-                              }}
-                            >
-                              <option value="">(Pagador)</option>
-                              {people.map((person) => (
-                                <option key={person.id} value={person.id}>
-                                  {person.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="muted">-</span>
-                          )}
-                        </td>
-                        <td>
-                          <select
-                            className="input"
-                            style={{ padding: '4px 8px', fontSize: '0.85rem' }}
-                            value={p.debtor_id ?? ''}
-                            onChange={(e) => {
-                              const newDebtorId = e.target.value ? Number(e.target.value) : null
+                              const newBenId = e.target.value ? Number(e.target.value) : null
                               patchMutation.mutate({
                                 id: p.id,
-                                payload: {
-                                  debtor_id: newDebtorId,
-                                  ...(newDebtorId === null ? { debt_settled: false } : {}),
-                                },
+                                payload: { beneficiary_person_id: newBenId },
                               })
                             }}
                           >
-                            <option value="">-</option>
-                            {debtors.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name}
+                            <option value="">(Pagador)</option>
+                            {people.map((person) => (
+                              <option key={person.id} value={person.id}>
+                                {person.name}
                               </option>
                             ))}
                           </select>
-                        </td>
-                        <td>
-                          {p.debtor_id ? (
-                            <input
-                              type="checkbox"
-                              checked={p.debt_settled}
-                              onChange={(e) => {
-                                patchMutation.mutate({ id: p.id, payload: { debt_settled: e.target.checked } })
-                              }}
-                            />
-                          ) : (
-                            <span className="muted">-</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="button"
-                            style={{ padding: '4px 8px', fontSize: '0.8rem', background: '#c0392b', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
-                            disabled={deleteMutation.isPending}
-                            onClick={() => setPendingDelete({ id: p.id, description: p.description })}
-                          >
-                            🗑
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        ) : (
+                          <span className="muted">-</span>
+                        )}
+                      </td>
+                      <td>
+                        <select
+                          className="input"
+                          style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                          value={p.debtor_id ?? ''}
+                          onChange={(e) => {
+                            const newDebtorId = e.target.value ? Number(e.target.value) : null
+                            patchMutation.mutate({
+                              id: p.id,
+                              payload: {
+                                debtor_id: newDebtorId,
+                                ...(newDebtorId === null ? { debt_settled: false } : {}),
+                              },
+                            })
+                          }}
+                        >
+                          <option value="">-</option>
+                          {debtors.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        {p.debtor_id ? (
+                          <input
+                            type="checkbox"
+                            checked={p.debt_settled}
+                            onChange={(e) => {
+                              patchMutation.mutate({ id: p.id, payload: { debt_settled: e.target.checked } })
+                            }}
+                          />
+                        ) : (
+                          <span className="muted">-</span>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button"
+                          style={{ padding: '4px 8px', fontSize: '0.8rem', background: '#c0392b', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
+                          disabled={deleteMutation.isPending}
+                          onClick={() => setPendingDelete({ id: p.id, description: p.description })}
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="purchaseCardList">
+              {rows.map((p) => {
+                const categoryObj = categoriesData?.find((c) => c.name === p.category)
+                const payerName = p.payers?.[0]?.person_name ?? '-'
+                const cardName = p.card_id ? (cardNameById.get(p.card_id) ?? null) : null
+                return (
+                  <div
+                    key={p.id}
+                    className="purchaseCard"
+                    onClick={() => setMobileEditId(p.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setMobileEditId(p.id)}
+                  >
+                    <div className="purchaseCardHeader">
+                      <span className="purchaseCardDescription">{p.description}</span>
+                      <span className="purchaseCardAmount">
+                        ${p.amount_original.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="purchaseCardChips">
+                      {p.category && (
+                        <span
+                          className="purchaseChip"
+                          style={{
+                            background: categoryObj?.color ? `${categoryObj.color}22` : 'var(--color-primary-light)',
+                            color: categoryObj?.color ?? 'var(--color-primary)',
+                            border: `1px solid ${categoryObj?.color ? categoryObj.color + '44' : 'rgba(99,102,241,0.2)'}`,
+                          }}
+                        >
+                          {p.category}
+                        </span>
+                      )}
+                      <span className="purchaseChip purchaseChipNeutral">{payerName}</span>
+                      {cardName && <span className="purchaseChip purchaseChipNeutral">{cardName}</span>}
+                      {p.installments_total > 1 && (
+                        <span className="purchaseChip purchaseChipInstallment">
+                          {p.installments_total}x
+                        </span>
+                      )}
+                      <span className="purchaseChip purchaseChipNeutral">{p.purchase_date}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Pagination — shared for both views */}
+            {pages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button type="button" className="button" disabled={currentPage <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Anterior
+                </button>
+                <span className="muted" style={{ margin: 0 }}>
+                  Página {currentPage} de {pages}
+                </span>
+                <button type="button" className="button" disabled={currentPage >= pages} onClick={() => setPage((p) => p + 1)}>
+                  Siguiente
+                </button>
               </div>
-              {pages > 1 ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    marginTop: '16px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={currentPage <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    Anterior
-                  </button>
-                  <span className="muted" style={{ margin: 0 }}>
-                    Página {currentPage} de {pages}
-                  </span>
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={currentPage >= pages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Siguiente
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )
-        }
+            )}
+          </>
+        )}
       </div >
     </section>
 
@@ -741,6 +787,91 @@ export function PurchasesPage() {
       }}
       onCancel={() => setPendingDelete(null)}
     />
+
+    {/* Mobile edit sheet */}
+    {mobileEditPurchase && (
+      <div className="purchaseMobileEditOverlay" onClick={() => setMobileEditId(null)}>
+        <div className="purchaseMobileEditSheet" onClick={(e) => e.stopPropagation()}>
+          <div className="purchaseMobileEditHeader">
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>{mobileEditPurchase.description}</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                ${mobileEditPurchase.amount_original.toLocaleString('es-AR', { maximumFractionDigits: 2 })} · {mobileEditPurchase.purchase_date}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="mobileMenuClose"
+              style={{ background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              onClick={() => setMobileEditId(null)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="purchaseMobileEditBody">
+            <div className="formRow">
+              <label className="label">Categoría</label>
+              <select
+                className="input"
+                value={mobileEditPurchase.category ?? ''}
+                onChange={(e) => {
+                  patchMutation.mutate({ id: mobileEditPurchase.id, payload: { category: e.target.value || null } })
+                }}
+              >
+                <option value="">-</option>
+                {categoriesData?.map((cat) => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="formRow">
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="checkbox"
+                  checked={mobileEditPurchase.is_common}
+                  style={{ width: '18px', height: '18px' }}
+                  onChange={(e) => {
+                    patchMutation.mutate({ id: mobileEditPurchase.id, payload: { is_common: e.target.checked } })
+                  }}
+                />
+                Gasto común
+              </label>
+            </div>
+
+            <div className="formRow">
+              <label className="label">Detalle / Notas</label>
+              <input
+                type="text"
+                className="input"
+                defaultValue={mobileEditPurchase.notes ?? ''}
+                placeholder="Agregar detalle..."
+                onBlur={(e) => {
+                  const val = e.target.value
+                  if (val !== (mobileEditPurchase.notes ?? '')) {
+                    patchMutation.mutate({ id: mobileEditPurchase.id, payload: { notes: val || null } })
+                  }
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="button danger"
+              style={{ width: '100%', marginTop: '8px' }}
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                setMobileEditId(null)
+                setPendingDelete({ id: mobileEditPurchase.id, description: mobileEditPurchase.description })
+              }}
+            >
+              🗑 Eliminar compra
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   )
 }
