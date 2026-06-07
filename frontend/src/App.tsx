@@ -11,16 +11,30 @@ import { CategoriesPage } from './pages/categories-page'
 import { GoalsPage } from './pages/goals-page'
 import { SavingsPage } from './pages/savings-page'
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/purchases', label: 'Compras' },
-  { to: '/import', label: 'Importar' },
-  { to: '/budget', label: 'Presupuesto' },
-  { to: '/ahorros', label: 'Ahorros' },
-  { to: '/categories', label: 'Categorías' },
-  { to: '/goals', label: 'Objetivos' },
-  { to: '/admin', label: 'Admin' },
+const NAV_GROUPS = [
+  {
+    label: 'Principal',
+    secondary: false,
+    items: [
+      { to: '/', label: 'Dashboard', icon: '📊', end: true as const },
+      { to: '/purchases', label: 'Compras', icon: '🧾' },
+      { to: '/import', label: 'Importar', icon: '📥' },
+      { to: '/admin', label: 'Admin', icon: '⚙️' },
+    ],
+  },
+  {
+    label: 'Más',
+    secondary: true,
+    items: [
+      { to: '/budget', label: 'Presupuesto', icon: '💰' },
+      { to: '/ahorros', label: 'Ahorros', icon: '🐖' },
+      { to: '/categories', label: 'Categorías', icon: '🏷️' },
+      { to: '/goals', label: 'Objetivos', icon: '🎯' },
+    ],
+  },
 ]
+
+const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items)
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -61,20 +75,32 @@ function App() {
           <div className="mobileMenuOverlay" onClick={closeMenu} />
           <nav className="mobileMenu">
             <div className="mobileMenuHeader">
-              <div className="appTitle">Admin Consumos</div>
+              <div className="appTitle mobileMenuTitle">Admin Consumos</div>
               <button className="mobileMenuClose" onClick={closeMenu} aria-label="Cerrar">✕</button>
             </div>
-            {NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.to}
-                className={({ isActive }) => (isActive ? 'mobileLink active' : 'mobileLink')}
-                to={item.to}
-                end={item.end}
-                onClick={closeMenu}
-              >
-                {item.label}
-              </NavLink>
-            ))}
+            <div className="mobileMenuContent">
+              {NAV_GROUPS.map((group) => (
+                <div key={group.label} className="mobileMenuGroup">
+                  <div className="mobileMenuGroupLabel">{group.label}</div>
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      className={({ isActive }) =>
+                        ['mobileLink', group.secondary ? 'mobileLinkSecondary' : '', isActive ? 'active' : '']
+                          .filter(Boolean)
+                          .join(' ')
+                      }
+                      to={item.to}
+                      end={item.end}
+                      onClick={closeMenu}
+                    >
+                      <span className="mobileLinkIcon">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              ))}
+            </div>
           </nav>
         </>
       )}
