@@ -17,9 +17,9 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>${HOME}/Library/Logs/admin-consumos/backup_railway.log</string>
+  <string>/Users/pablo/Library/Logs/admin-consumos/backup_railway.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${HOME}/Library/Logs/admin-consumos/backup_railway.log</string>
+  <string>/Users/pablo/Library/Logs/admin-consumos/backup_railway.log</string>
 </dict>
 </plist>
