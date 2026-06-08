@@ -85,6 +85,11 @@ def test_backup_200_valid_token(backup_client):
     assert "app_" in content_disposition
     assert ".db" in content_disposition
 
+    # Check Content-Length header is present and matches content
+    content_length = r.headers.get("content-length")
+    assert content_length is not None
+    assert int(content_length) == len(r.content)
+
     # Check SQLite magic bytes at the start of the file
     content = r.content
     assert len(content) > 0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import os
 import secrets
@@ -130,6 +131,7 @@ from app.schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _fetch_payers(session, purchase_id: int) -> list[PurchasePayerRead]:
@@ -989,6 +991,11 @@ def get_db_backup(request: Request) -> StreamingResponse:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     db_path = get_sqlite_db_path()
+
+    # Validate DB file exists before attempting backup
+    if not db_path.exists():
+        raise HTTPException(status_code=503, detail="Database not found")
+
     today = date.today().isoformat()
     timestamp = int(date.today().toordinal())
 
@@ -1028,6 +1035,7 @@ def get_db_backup(request: Request) -> StreamingResponse:
             },
         )
     except Exception:
+        logger.exception("DB backup failed")
         try:
             os.unlink(tmp_path)
         except OSError:
