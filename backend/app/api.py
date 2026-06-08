@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import math
+import os
+import secrets
+import sqlite3
+import tempfile
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -69,6 +74,7 @@ from app.crud import (
     update_beneficiary,
     delete_beneficiary,
 )
+from app.config import get_sqlite_db_path
 from app.db import get_session
 from app.models import Category, Person, PurchasePayer
 from app.schemas import (
@@ -964,3 +970,66 @@ def del_card_statement(statement_id: int) -> Response:
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
     return Response(status_code=204)
+
+
+# --- DB Backup ---
+
+@router.get("/backup/db")
+def get_db_backup(request: Request) -> StreamingResponse:
+    """Stream a consistent SQLite backup. Requires Authorization: Bearer <BACKUP_TOKEN>."""
+    backup_token = os.environ.get("BACKUP_TOKEN")
+    if not backup_token:
+        raise HTTPException(status_code=503, detail="Backup not configured")
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    provided_token = auth_header[len("Bearer "):]
+    if not secrets.compare_digest(provided_token, backup_token):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    db_path = get_sqlite_db_path()
+    today = date.today().isoformat()
+    timestamp = int(date.today().toordinal())
+
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix=f"backup_{timestamp}_", suffix=".db")
+    os.close(tmp_fd)
+
+    try:
+        src = sqlite3.connect(str(db_path))
+        try:
+            dst = sqlite3.connect(tmp_path)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
+        file_size = os.path.getsize(tmp_path)
+
+        def _iter_file():
+            try:
+                with open(tmp_path, "rb") as f:
+                    while chunk := f.read(64 * 1024):
+                        yield chunk
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+        return StreamingResponse(
+            _iter_file(),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename=app_{today}.db",
+                "Content-Length": str(file_size),
+            },
+        )
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
