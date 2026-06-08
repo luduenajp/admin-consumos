@@ -9,6 +9,9 @@ LOG_DIR="$HOME/Library/Logs/admin-consumos"
 LOG_FILE="$LOG_DIR/backup_railway.log"
 TMP_FILE="/tmp/backup_railway_tmp.db"
 
+# ── Cleanup trap ─────────────────────────────────────────────────────────────
+trap 'rm -f "$TMP_FILE"' EXIT
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 mkdir -p "$LOG_DIR"
 
@@ -67,10 +70,12 @@ fi
 
 # ── Validate SQLite magic bytes ───────────────────────────────────────────────
 # SQLite files start with "SQLite format 3\000" (16 bytes)
-# Use 'file' command as primary check, fall back to dd+xxd
+# Use 'file' command as primary check, fall back to xxd
 MAGIC_OK=0
+VALIDATOR_FOUND=0
 
 if command -v file &>/dev/null; then
+    VALIDATOR_FOUND=1
     if file "$TMP_FILE" | grep -q "SQLite"; then
         MAGIC_OK=1
     fi
@@ -79,6 +84,7 @@ fi
 # Also verify with raw bytes as a secondary check
 if [[ "$MAGIC_OK" -eq 0 ]]; then
     if command -v xxd &>/dev/null; then
+        VALIDATOR_FOUND=1
         header=$(xxd -p -l 15 "$TMP_FILE" 2>/dev/null || true)
         # "SQLite format 3" in hex = 53514c69746520666f726d61742033
         if [[ "$header" == "53514c69746520666f726d61742033" ]]; then
@@ -87,9 +93,14 @@ if [[ "$MAGIC_OK" -eq 0 ]]; then
     fi
 fi
 
+# Guard: if no validator is available, warn and exit
+if [[ "$VALIDATOR_FOUND" -eq 0 ]]; then
+    log "WARNING: Neither 'file' nor 'xxd' command available. Cannot validate SQLite magic bytes."
+    exit 1
+fi
+
 if [[ "$MAGIC_OK" -eq 0 ]]; then
     log "ERROR: Downloaded file is not a valid SQLite database. Discarding."
-    rm -f "$TMP_FILE"
     exit 1
 fi
 
