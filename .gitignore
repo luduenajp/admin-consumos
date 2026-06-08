@@ -12,7 +12,8 @@ Thumbs.db
 data/*.db.backup.*
 resumenes/
 examples/
-backups/
+backups/**/*.db
+backups/**/.last_backup
 *.pdf
 *.xlsx
 *.xls

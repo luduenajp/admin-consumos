@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adminconsumos.backup-railway</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/pablo/github/admin-consumos/backup_railway.sh</string>
+  </array>
+
+  <!-- Script handles timing via .last_backup file -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>${HOME}/Library/Logs/admin-consumos/backup_railway.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${HOME}/Library/Logs/admin-consumos/backup_railway.log</string>
+</dict>
+</plist>
