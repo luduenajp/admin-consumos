@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     fetchCards,
@@ -29,9 +29,10 @@ interface PurchaseFormProps {
     onSuccess?: () => void
     onCancel?: () => void
     initialValues?: PurchaseFormInitialValues
+    initialFile?: File
 }
 
-export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFormProps) {
+export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }: PurchaseFormProps) {
     const queryClient = useQueryClient()
 
     const [formData, setFormData] = useState({
@@ -126,10 +127,12 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
         setErrors(e => ({ ...e, [field]: validateField(field) }))
     }
 
-    async function handleComprobanteChange(e: React.ChangeEvent<HTMLInputElement>) {
+    function handleComprobanteChange(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0]
-        if (!file) return
+        if (file) void parseComprobanteFile(file)
+    }
 
+    async function parseComprobanteFile(file: File) {
         setPreviewName(file.name)
         setParseStatus('loading')
         setParseResult(null)
@@ -168,6 +171,16 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues }: PurchaseFor
             setParseStatus('error')
         }
     }
+
+    // Ref guard: StrictMode duplica los effects en dev y el parseo llama a la
+    // API de Claude Vision (billable) — debe ejecutarse una sola vez.
+    const initialFileProcessed = useRef(false)
+    useEffect(() => {
+        if (initialFile && !initialFileProcessed.current) {
+            initialFileProcessed.current = true
+            void parseComprobanteFile(initialFile)
+        }
+    }, [initialFile])
 
     async function handleSaveBeneficiary() {
         if (!parseResult) return

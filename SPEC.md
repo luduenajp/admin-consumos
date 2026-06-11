@@ -712,6 +712,29 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Business Rules:** BR-005
 - **Edge Cases:** Invalid URL or network error → `500`.
 
+### UC-053: Extracción de Comprobante (Claude Vision)
+
+- **Endpoint:** `POST /api/import/comprobante`
+- **Form Params:** `file` (UploadFile — `image/png|jpeg|gif|webp` o `application/pdf`)
+- **Steps:**
+  1. Validate content type; reject unsupported → `400`
+  2. Send file to Claude Vision API (`ANTHROPIC_API_KEY`) for extraction
+  3. Match extracted nombre/CBU/CUIT/alias against `Beneficiary` table (exact/fuzzy)
+- **Result:** `200` → `ComprobanteExtraction { amount, date, currency, description, matched_beneficiary, raw_extracted { nombre, cbu, cuit, alias } }`
+- **Notes:** The file is not persisted. No purchase is created — the frontend pre-fills `PurchaseForm` and the user confirms manually.
+
+### UC-054: Compartir Comprobante desde Android (Web Share Target)
+
+- **Flow:** The frontend is an installable PWA (`manifest.webmanifest` with `share_target`). On Android, sharing an image/PDF to the installed app POSTs it to `/share-target` (multipart, field `file`).
+- **Steps:**
+  1. The service worker (`frontend/public/sw.js`) intercepts `POST /share-target`, stashes the file in Cache API (`shared-comprobante`), and responds `303 → /nueva-transferencia?shared=1` — the request never reaches the backend
+  2. The `/nueva-transferencia` page retrieves and deletes the stashed file (`retrieveSharedFile()` in `frontend/src/utils/sharedFile.ts`)
+  3. The file is injected into `PurchaseForm` (`initialFile` prop) with `payment_method: 'transfer'`, triggering UC-053 extraction and auto-fill
+  4. The user confirms and saves manually (confirm-before-save)
+- **Backend fallback:** `POST /share-target` (no auth) returns `303 → /nueva-transferencia` discarding the file, for the case where the SW is not controlling the page.
+- **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*` and `/share-target` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials; a 401 makes the PWA non-installable). See `PUBLIC_PATHS` in `backend/app/main.py`.
+- **SPA fallback:** `SPAStaticFiles` in `main.py` serves `index.html` for client-side deep links (e.g. `/nueva-transferencia`); API 404s are not masked.
+
 ---
 
 ## 9. Use Cases — Frontend Pages
@@ -878,6 +901,8 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 | `POST` | `/api/import/visa-xlsx` | UC-050 | Import Visa XLSX |
 | `POST` | `/api/import/visa-pdf` | UC-051 | Import Visa/MC PDF |
 | `POST` | `/api/import/gsheets` | UC-052 | Import Google Sheets CSV |
+| `POST` | `/api/import/comprobante` | UC-053 | Extract comprobante data (Claude Vision) |
+| `POST` | `/share-target` | UC-054 | Web Share Target fallback (303 redirect, no auth) |
 | `GET` | `/api/savings` | UC-070 | List savings with current value |
 | `POST` | `/api/savings` | UC-071 | Create saving |
 | `PATCH` | `/api/savings/{id}` | UC-072 | Update saving |

@@ -16,6 +16,12 @@ const queryClient = new QueryClient({
   },
 })
 
+// El SW solo intercepta el POST del Web Share Target (no cachea assets),
+// por eso se registra incondicionalmente, también en dev.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

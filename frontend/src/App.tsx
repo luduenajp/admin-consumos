@@ -10,6 +10,7 @@ import { BudgetPage } from './pages/budget-page'
 import { CategoriesPage } from './pages/categories-page'
 import { GoalsPage } from './pages/goals-page'
 import { SavingsPage } from './pages/savings-page'
+import { NuevaTransferenciaPage } from './pages/nueva-transferencia-page'
 
 const NAV_GROUPS = [
   {
@@ -115,6 +116,7 @@ function App() {
             <Route element={<CategoriesPage />} path="/categories" />
             <Route element={<GoalsPage />} path="/goals" />
             <Route element={<SavingsPage />} path="/ahorros" />
+            <Route element={<NuevaTransferenciaPage />} path="/nueva-transferencia" />
             <Route element={<AdminPage />} path="/admin" />
           </Routes>
         </ErrorBoundary>

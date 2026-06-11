@@ -120,7 +120,7 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 
 | Path | Role |
 |---|---|
-| `App.tsx` | React Router layout with 6 routes: `/`, `/purchases`, `/import`, `/budget`, `/categories`, `/admin`. Wraps routes in `ErrorBoundary` |
+| `App.tsx` | React Router layout: `/`, `/purchases`, `/import`, `/budget`, `/categories`, `/goals`, `/ahorros`, `/nueva-transferencia`, `/admin`. Wraps routes in `ErrorBoundary` |
 | `api/types.ts` | TypeScript interfaces matching backend schemas (read + create payloads) |
 | `api/http.ts` | Fetch wrappers with 30s timeout (`AbortController`) + `extractErrorMessage()` utility for parsing backend error payloads |
 | `api/endpoints.ts` | API client functions for all endpoints |
@@ -130,6 +130,10 @@ Detecta mes de cierre en: "CIERRE ACTUAL", "Cierre actual X de febrero", "Fecha 
 | `pages/budget-page.tsx` | Gestión de ingresos por persona/mes y registro de transferencias realizadas (DebtTransfer) |
 | `pages/categories-page.tsx` | ABM de categorías con nombre y color |
 | `pages/admin-page.tsx` | Entity management — create People, Cards, Debtors, FX Rates |
+| `pages/nueva-transferencia-page.tsx` | Destino del Web Share Target (Android): recupera el comprobante compartido y abre `PurchaseForm` pre-llenado con `payment_method: 'transfer'` |
+| `utils/sharedFile.ts` | `retrieveSharedFile()` — lee/borra el comprobante que el SW dejó en Cache API |
+| `public/manifest.webmanifest` | Manifest PWA con `share_target` (POST `/share-target`, campo `file`) |
+| `public/sw.js` | Service worker mínimo: solo intercepta el POST del share target y guarda el archivo en Cache API (no cachea assets) |
 | `components/TransferCalculationCard.tsx` | Muestra el resultado de `calculate_transfers` (Fondo Común) para un mes |
 | `components/MonthlyBalanceCard.tsx` | Resumen de balance mensual |
 | `components/TimelineChart.tsx` | Gráfico de timeline de cuotas futuras |
@@ -161,6 +165,8 @@ All component styles use these variables via `App.css`. No CSS framework — pla
 - **FK validation**: `create_card` and `create_purchase` validate that referenced Person/Card IDs exist before creating, raising `ValueError` (caught as HTTP 400)
 - **Input validation**: `year_month` fields use regex `^\d{4}-(0[1-9]|1[0-2])$`; payer `share_value` must be `> 0`; PERCENT shares must sum to 100 (model_validator)
 - **Global error handlers** in `main.py`: `IntegrityError` → 409, `ValueError` → 400
+- **Basic Auth exemptions** (`PUBLIC_PATHS` in `main.py`): `/health`, `/manifest.webmanifest`, `/sw.js`, `/icons/*`, `/share-target` — Chrome fetchea manifest/íconos sin credenciales; un 401 hace la PWA no instalable
+- **SPA fallback**: `SPAStaticFiles` en `main.py` sirve `index.html` para deep links client-side (ej. `/nueva-transferencia`); los 404 de `/api` no se enmascaran
 - **DB migrations**: `db.py:_migrate_add_columns()` runs on startup to add columns (`debtor_id`, `debt_settled`, `beneficiary_person_id`) to existing databases. Idempotent via `PRAGMA table_info` check.
 - **Manual cascade delete**: `delete_purchase` uses raw SQL to delete children (installments, payers) before parent, because SQLModel doesn't emit `ON DELETE CASCADE` DDL. If new child tables are added, their DELETE must go here too.
 
