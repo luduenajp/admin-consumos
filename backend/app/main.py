@@ -7,10 +7,32 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
+
+# Rutas públicas: /health para healthchecks; manifest/sw/icons porque Chrome
+# los fetchea sin credenciales y un 401 hace la PWA no instalable;
+# /share-target porque el POST del share sheet llega sin Authorization.
+PUBLIC_PATHS = {"/health", "/manifest.webmanifest", "/sw.js", "/share-target"}
+
+
+class SPAStaticFiles(StaticFiles):
+    """Sirve index.html para rutas client-side (deep links del SPA)."""
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            # No enmascarar 404 de API con index.html
+            if exc.status_code == 404 and not path.startswith("api/"):
+                return await super().get_response("index.html", scope)
+            raise
+        if response.status_code == 404 and not path.startswith("api/"):
+            return await super().get_response("index.html", scope)
+        return response
 
 from app.api import router as api_router
 from app.config import get_auth_credentials, get_cors_origins
@@ -25,7 +47,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def basic_auth_middleware(request: Request, call_next):
-        if request.url.path == "/health":
+        path = request.url.path
+        if path in PUBLIC_PATHS or path.startswith("/icons/"):
             return await call_next(request)
 
         username, password = get_auth_credentials()
@@ -75,6 +98,12 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.post("/share-target")
+    def share_target_fallback() -> RedirectResponse:
+        # Fallback si el service worker no intercepta el POST del share sheet
+        # (p. ej. site data borrado): se descarta el archivo y se abre el form vacío.
+        return RedirectResponse("/nueva-transferencia", status_code=303)
+
     @app.on_event("startup")
     def on_startup() -> None:
         init_db()
@@ -84,7 +113,7 @@ def create_app() -> FastAPI:
 
     dist_path = Path(__file__).parent.parent.parent / "frontend" / "dist"
     if dist_path.exists():
-        app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="static")
+        app.mount("/", SPAStaticFiles(directory=str(dist_path), html=True), name="static")
 
     return app
 

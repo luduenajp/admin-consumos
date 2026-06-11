@@ -30,6 +30,35 @@ def test_health_no_auth(auth_client):
     assert r.status_code == 200
 
 
+def test_pwa_assets_no_auth(auth_client):
+    """Manifest, service worker e iconos están exentos de auth (Chrome los
+    fetchea sin credenciales; un 401 hace la PWA no instalable)."""
+    for path in ("/manifest.webmanifest", "/sw.js", "/icons/icon-192.png"):
+        r = auth_client.get(path)
+        assert r.status_code != 401, path
+
+
+def test_spa_deep_link_serves_index(auth_client):
+    """Rutas client-side como /nueva-transferencia sirven index.html (SPA fallback)."""
+    from pathlib import Path
+    dist = Path(__file__).parent.parent.parent / "frontend" / "dist" / "index.html"
+    if not dist.exists():
+        pytest.skip("frontend/dist no está buildeado")
+    r = auth_client.get("/nueva-transferencia", headers=_auth_header("testuser", "testpass"))
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    # los 404 de API no se enmascaran con index.html
+    r = auth_client.get("/api/nope", headers=_auth_header("testuser", "testpass"))
+    assert r.status_code == 404
+
+
+def test_share_target_fallback_no_auth(auth_client):
+    """POST /share-target sin credenciales redirige al formulario vacío."""
+    r = auth_client.post("/share-target", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/nueva-transferencia"
+
+
 def test_api_no_auth_returns_401(auth_client):
     r = auth_client.get("/api/people")
     assert r.status_code == 401
