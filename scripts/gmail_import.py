@@ -32,6 +32,7 @@ Formato del JSON de entrada:
 }
 """
 
+import re
 import sys
 import os
 import json
@@ -109,6 +110,26 @@ def resolve_category(concept, db_categories):
 # Helpers
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Description normalization (inlined from backend/app/importers/visa_xlsx.py)
+# ---------------------------------------------------------------------------
+
+_purchase_desc_cleanup_re = re.compile(
+    r"\b(?:C\.)\s*\d+\s*/\s*\d+\b|\b\d+\s*de\s*\d+\b",
+    re.IGNORECASE,
+)
+_purchase_desc_leading_code_re = re.compile(r"^\s*\d{3,}\s+")
+_purchase_desc_trailing_code_re = re.compile(r"\s+\d{3,}\s*$")
+
+
+def normalize_purchase_description(*, description: str) -> str:
+    cleaned = _purchase_desc_cleanup_re.sub(" ", description)
+    cleaned = _purchase_desc_leading_code_re.sub("", cleaned)
+    cleaned = _purchase_desc_trailing_code_re.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
 def add_months(ym, n):
     y, m = map(int, ym.split('-'))
     m += n
@@ -119,11 +140,15 @@ def add_months(ym, n):
 
 
 def is_duplicate(cur, date, desc, amount):
+    norm_desc = normalize_purchase_description(description=desc)
     cur.execute(
-        'SELECT id FROM purchase WHERE purchase_date=? AND description=? AND ABS(amount_original-?)<=0.02',
-        (date, desc, amount)
+        'SELECT id, description FROM purchase WHERE purchase_date=? AND ABS(amount_original-?)<=0.02',
+        (date, amount)
     )
-    return cur.fetchone() is not None
+    for row_id, row_desc in cur.fetchall():
+        if normalize_purchase_description(description=row_desc) == norm_desc:
+            return True
+    return False
 
 
 def _payer_for_record(rec: dict) -> int:
@@ -145,7 +170,7 @@ def _build_api_payload(rec: dict) -> dict:
         "card_id": rec.get("card_id"),
         "payment_method": rec.get("payment_method", "CARD"),
         "purchase_date": rec["purchase_date"],
-        "description": rec["description"],
+        "description": normalize_purchase_description(description=rec["description"]),
         "currency": rec.get("currency", "ARS"),
         "amount_original": amount,
         "installments_total": installments,
@@ -274,7 +299,7 @@ def _run_local_mode(records: list, ignored_ids: list) -> None:
                 continue
 
             date = rec['purchase_date']
-            desc = rec['description']
+            desc = normalize_purchase_description(description=rec['description'])
             amount = float(rec['amount_original'])
             installments = int(rec.get('installments_total', 1))
             installment_amount = round(amount / installments, 2)
