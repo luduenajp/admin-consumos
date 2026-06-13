@@ -78,7 +78,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
     return (
       <div className="kpi-grid">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="panel" style={{ padding: '20px', textAlign: 'center' }}>
+          <div key={i} className="panel kpi-card" style={{ textAlign: 'center' }}>
             <Spinner size={20} />
           </div>
         ))}
@@ -89,7 +89,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
   return (
     <div className="kpi-grid">
       {/* Total gastado */}
-      <div className="panel" style={{ padding: '20px' }}>
+      <div className="panel kpi-card">
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Total del mes
         </div>
@@ -109,7 +109,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
       </div>
 
       {/* Cuotas activas */}
-      <div className="panel" style={{ padding: '20px' }}>
+      <div className="panel kpi-card">
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Cuotas activas
         </div>
@@ -122,7 +122,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
       </div>
 
       {/* Presupuesto */}
-      <div className="panel" style={{ padding: '20px' }}>
+      <div className="panel kpi-card">
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Presupuesto
         </div>
@@ -156,7 +156,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
       </div>
 
       {/* Transferencia pendiente + deudas */}
-      <div className="panel" style={{ padding: '20px' }}>
+      <div className="panel kpi-card desktopOnly">
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Transferencia
         </div>

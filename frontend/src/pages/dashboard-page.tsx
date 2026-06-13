@@ -45,7 +45,6 @@ export function DashboardPage() {
   const [showTransferForm, setShowTransferForm] = useState(false)
   const [tableSearch, setTableSearch] = useState('')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
-  const [mobileTab, setMobileTab] = useState<'cuotas' | 'graficos' | 'recurrentes' | 'resumen'>('cuotas')
   const [mobileResumenSearch, setMobileResumenSearch] = useState('')
   const personId = personFilter ? Number(personFilter) : undefined
   const cardId = cardFilter ? Number(cardFilter) : undefined
@@ -251,7 +250,7 @@ export function DashboardPage() {
               onClick={() => {
                 window.location.href = `/api/reports/export-excel?year_month=${monthFilter}`
               }}
-              className="button"
+              className="button desktopOnly"
               style={{ background: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)', fontWeight: 600 }}
             >
               Exportar Excel
@@ -283,130 +282,83 @@ export function DashboardPage() {
       {/* KPI Summary Cards */}
       <KpiSummary yearMonth={monthFilter} personId={personId} cardId={cardId} isCommon={isCommon} />
 
-      {/* Mobile-only: Transfer card + tabs */}
+      {/* Mobile-only: Resumen del mes */}
       <div className="dashboard-mobile-section">
-        {/* Transfer card — always visible on mobile */}
-        <div className="dashboard-mobile-transfer">
-          <TransferCalculationCard yearMonth={monthFilter} />
-        </div>
-
-        {/* Tab navigation */}
-        <div className="dashboard-mobile-tabs">
-          {(['cuotas', 'graficos', 'recurrentes', 'resumen'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              className={`dashboard-mobile-tab${mobileTab === tab ? ' active' : ''}`}
-              onClick={() => setMobileTab(tab)}
-            >
-              {tab === 'cuotas' ? 'Cuotas' : tab === 'graficos' ? 'Gráficos' : tab === 'recurrentes' ? 'Recurrentes' : 'Resumen'}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        {mobileTab === 'cuotas' && <MonthlyBalanceCard yearMonth={monthFilter} />}
-        {mobileTab === 'graficos' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="panel">
-              <div className="panelTitle">Gasto por Categoría</div>
-              {categorySpendingLoading ? (
-                <div className="loadingContainer"><Spinner size={28} /></div>
-              ) : (
-                <CategoryChart data={categorySpendingData ?? []} categories={categoriesData ?? []} />
-              )}
+        <div className="panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+            <div className="panelTitle" style={{ marginBottom: 0 }}>
+              Resumen del mes
             </div>
-            <div className="panel">
-              <div className="panelTitle">Cuotas Futuras</div>
-              {timelineLoading ? (
-                <div className="loadingContainer"><Spinner size={28} /></div>
-              ) : (
-                <TimelineChart
-                  data={timelineData ?? []}
-                  commonData={isCommon === undefined ? timelineCommon : undefined}
-                  personalData={isCommon === undefined ? timelinePersonal : undefined}
-                  monthlyIncome={monthlyIncome}
-                />
-              )}
-            </div>
+            <input
+              type="text"
+              className="input"
+              placeholder="Buscar..."
+              value={mobileResumenSearch}
+              onChange={(e) => setMobileResumenSearch(e.target.value)}
+              style={{ fontSize: '0.85rem', flex: 1, minWidth: 0 }}
+            />
           </div>
-        )}
-        {mobileTab === 'recurrentes' && (
-          <div className="panel">
-            <div className="panelTitle">Gastos Recurrentes</div>
-            <RecurringExpensesCard />
-          </div>
-        )}
-        {mobileTab === 'resumen' && (
-          <div className="panel">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-              <div className="panelTitle" style={{ marginBottom: 0 }}>
-                Resumen del mes
-              </div>
-              <input
-                type="text"
-                className="input"
-                placeholder="Buscar..."
-                value={mobileResumenSearch}
-                onChange={(e) => setMobileResumenSearch(e.target.value)}
-                style={{ fontSize: '0.85rem', flex: 1, minWidth: 0 }}
-              />
-            </div>
-            {monthBreakdownLoading ? (
-              <div className="loadingContainer"><Spinner size={28} /></div>
-            ) : !monthBreakdownData ? (
-              <div className="muted">Sin datos</div>
-            ) : (() => {
-              const mobileItems = monthBreakdownData.items
-                .filter((row) =>
-                  !mobileResumenSearch ||
-                  row.description.toLowerCase().includes(mobileResumenSearch.toLowerCase()) ||
-                  (row.category ?? '').toLowerCase().includes(mobileResumenSearch.toLowerCase())
+          {monthBreakdownLoading ? (
+            <div className="loadingContainer"><Spinner size={28} /></div>
+          ) : !monthBreakdownData ? (
+            <div className="muted">Sin datos</div>
+          ) : (() => {
+            const mobileItems = monthBreakdownData.items
+              .filter((row) => {
+                if (!mobileResumenSearch) return true
+                const q = mobileResumenSearch.toLowerCase()
+                return (
+                  row.description.toLowerCase().includes(q) ||
+                  (row.notes ?? '').toLowerCase().includes(q) ||
+                  (row.category ?? '').toLowerCase().includes(q) ||
+                  (row.payer_name ?? '').toLowerCase().includes(q) ||
+                  (row.card_name ?? '').toLowerCase().includes(q) ||
+                  (row.debtor_name ?? '').toLowerCase().includes(q) ||
+                  (row.payment_method ?? '').toLowerCase().includes(q) ||
+                  row.purchase_date.includes(q) ||
+                  row.amount_ars.toString().includes(q) ||
+                  (row.is_common ? 'común' : 'personal').includes(q)
                 )
-                .slice()
-                .sort((a, b) => b.amount_ars - a.amount_ars)
-              if (mobileItems.length === 0) {
-                return <div className="muted">{mobileResumenSearch ? 'Sin resultados' : 'Sin cuotas que venzan en este mes'}</div>
-              }
-              return (
-                <div className="purchaseCardList" style={{ display: 'flex' }}>
-                  {mobileItems.map((row) => (
-                    <div key={`${row.purchase_id}-${row.installment_index}`} className="purchaseCard">
-                      <div className="purchaseCardHeader">
-                        <span className="purchaseCardDescription">{row.description}</span>
-                        <span className="purchaseCardAmount">{formatCurrency(row.amount_ars)}</span>
-                      </div>
-                      <div className="purchaseCardChips">
-                        {row.category && (
-                          <span className="purchaseChip" style={{
-                            background: 'var(--color-primary-light)',
-                            color: 'var(--color-primary)',
-                            border: '1px solid var(--color-primary-light)',
-                          }}>
-                            {row.category}
-                          </span>
-                        )}
-                        <span className="purchaseChip purchaseChipNeutral">
-                          {row.is_common ? 'Común' : 'Personal'}
-                        </span>
-                        {row.card_name && (
-                          <span className="purchaseChip purchaseChipNeutral">{row.card_name}</span>
-                        )}
-                        {row.installments_total > 1 && (
-                          <span className="purchaseChip purchaseChipInstallment">
-                            {row.installment_index}/{row.installments_total}
-                          </span>
-                        )}
-                        <span className="purchaseChip purchaseChipNeutral">{row.payer_name}</span>
-                        <span className="purchaseChip purchaseChipNeutral">{row.purchase_date}</span>
-                      </div>
+              })
+              .slice()
+              .sort((a, b) => b.purchase_date.localeCompare(a.purchase_date))
+            if (mobileItems.length === 0) {
+              return <div className="muted">{mobileResumenSearch ? 'Sin resultados' : 'Sin cuotas que venzan en este mes'}</div>
+            }
+            return (
+              <div className="purchaseCardList" style={{ display: 'flex' }}>
+                {mobileItems.map((row) => (
+                  <div key={`${row.purchase_id}-${row.installment_index}`} className="purchaseCard">
+                    <div className="purchaseCardHeader">
+                      <span className="purchaseCardDescription">{row.description}</span>
+                      <span className="purchaseCardAmount">{formatCurrency(row.amount_ars)}</span>
                     </div>
-                  ))}
-                </div>
-              )
-            })()}
-          </div>
-        )}
+                    {row.notes && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '6px' }}>
+                        {row.notes}
+                      </div>
+                    )}
+                    <div className="purchaseCardChips">
+                      <span className="purchaseChip purchaseChipNeutral">
+                        {row.is_common ? 'Común' : 'Personal'}
+                      </span>
+                      {row.card_name && (
+                        <span className="purchaseChip purchaseChipNeutral">{row.card_name}</span>
+                      )}
+                      {row.installments_total > 1 && (
+                        <span className="purchaseChip purchaseChipInstallment">
+                          {row.installment_index}/{row.installments_total}
+                        </span>
+                      )}
+                      <span className="purchaseChip purchaseChipNeutral">{row.payer_name}</span>
+                      <span className="purchaseChip purchaseChipNeutral">{row.purchase_date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </div>
       </div>
 
       <div className="dashboard-desktop-only">

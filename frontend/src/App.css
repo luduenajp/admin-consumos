@@ -853,10 +853,18 @@
   gap: 16px;
 }
 
+.kpi-card {
+  padding: 20px;
+}
+
 @media (max-width: 768px) {
   .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .kpi-grid .kpi-card {
+    padding: 14px 12px;
   }
 }
 
@@ -1043,5 +1051,10 @@
 @media (max-width: 768px) {
   .admin-form-grid {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 768px) {
+  .desktopOnly {
+    display: none;
   }
 }
