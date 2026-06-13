@@ -239,6 +239,58 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
     return purchase
 
 
+def find_duplicate_purchase(
+    *,
+    session: Session,
+    card_id: Optional[int],
+    payment_method: str,
+    purchase_date: date,
+    description: str,
+    currency: str,
+    amount_original: float,
+    installments_total: int,
+) -> Optional[Purchase]:
+    """Return an existing Purchase that is a strict duplicate of the given fields.
+
+    Matching criteria:
+    - card_id equal (if both have card_id) OR payment_method equal (for transfer/cash)
+    - purchase_date equal
+    - currency equal
+    - amount_original within ±0.02 absolute or ±1% relative
+    - normalized description equal (case-insensitive)
+    - installments_total equal
+    """
+    stmt = select(Purchase).where(
+        Purchase.purchase_date == purchase_date,
+        Purchase.currency == currency,
+        Purchase.installments_total == installments_total,
+    )
+    candidates = list(session.exec(stmt))
+
+    norm_desc = normalize_purchase_description(description=description)
+    for existing in candidates:
+        # Card / payment method match
+        if card_id is not None and existing.card_id is not None:
+            if existing.card_id != card_id:
+                continue
+        else:
+            if existing.payment_method != payment_method:
+                continue
+
+        # Amount match: ±0.02 absolute OR ±1% relative
+        diff = abs(existing.amount_original - amount_original)
+        if not (diff <= 0.02 or diff / max(amount_original, 0.01) <= 0.01):
+            continue
+
+        # Normalized description match
+        if normalize_purchase_description(description=existing.description) != norm_desc:
+            continue
+
+        return existing
+
+    return None
+
+
 def find_existing_purchase_for_installment_import(
     *,
     session: Session,

@@ -23,6 +23,7 @@ from app.crud import (
     create_card,
     create_debtor,
     create_purchase,
+    find_duplicate_purchase,
     create_income,
     create_monthly_budget,
     create_person,
@@ -316,6 +317,19 @@ def get_purchases(
 @router.post("/purchases", response_model=PurchaseRead)
 def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
     with get_session() as session:
+        duplicate = find_duplicate_purchase(
+            session=session,
+            card_id=payload.card_id,
+            payment_method=payload.payment_method,
+            purchase_date=payload.purchase_date,
+            description=payload.description,
+            currency=payload.currency,
+            amount_original=payload.amount_original,
+            installments_total=payload.installments_total,
+        )
+        if duplicate is not None:
+            raise HTTPException(status_code=409, detail="Duplicate purchase")
+
         try:
             purchase = create_purchase(session=session, payload=payload)
         except ValueError as e:
