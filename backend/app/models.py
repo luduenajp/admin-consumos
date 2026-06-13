@@ -110,8 +110,6 @@ class PurchasePayer(SQLModel, table=True):
 
 
 class InstallmentSchedule(SQLModel, table=True):
-    __table_args__ = (UniqueConstraint("purchase_id", "installment_index", name="ux_installment_purchase_index"),)
-
     id: Optional[int] = Field(default=None, primary_key=True)
     purchase_id: int = Field(foreign_key="purchase.id", index=True)
     year_month: str = Field(index=True)  # YYYY-MM
