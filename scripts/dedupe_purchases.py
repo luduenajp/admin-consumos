@@ -162,10 +162,31 @@ def repoint_installments(conn: sqlite3.Connection, winner_id: int, loser_id: int
 
 
 def repoint_payers(conn: sqlite3.Connection, winner_id: int, loser_id: int) -> None:
-    conn.execute(
-        "UPDATE purchasepayer SET purchase_id = ? WHERE purchase_id = ?",
-        (winner_id, loser_id),
-    )
+    loser_rows = conn.execute(
+        "SELECT person_id FROM purchasepayer WHERE purchase_id = ?",
+        (loser_id,),
+    ).fetchall()
+
+    winner_person_ids = {
+        r["person_id"]
+        for r in conn.execute(
+            "SELECT person_id FROM purchasepayer WHERE purchase_id = ?",
+            (winner_id,),
+        ).fetchall()
+    }
+
+    for row in loser_rows:
+        person_id = row["person_id"]
+        if person_id not in winner_person_ids:
+            conn.execute(
+                "UPDATE purchasepayer SET purchase_id = ? WHERE purchase_id = ? AND person_id = ?",
+                (winner_id, loser_id, person_id),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM purchasepayer WHERE purchase_id = ? AND person_id = ?",
+                (loser_id, person_id),
+            )
 
 
 def delete_loser(conn: sqlite3.Connection, loser_id: int) -> None:
@@ -187,11 +208,10 @@ def merge_pair(
         f"removed #{loser['id']} '{loser['description']}'"
     )
 
-    if not dry_run:
-        transfer_metadata(conn, winner, loser)
-        repoint_installments(conn, winner["id"], loser["id"])
-        repoint_payers(conn, winner["id"], loser["id"])
-        delete_loser(conn, loser["id"])
+    transfer_metadata(conn, winner, loser)
+    repoint_installments(conn, winner["id"], loser["id"])
+    repoint_payers(conn, winner["id"], loser["id"])
+    delete_loser(conn, loser["id"])
 
 
 # ---------------------------------------------------------------------------
