@@ -8,6 +8,7 @@ import {
   fetchTimeline,
   fetchDebtReport,
   updatePurchase,
+  deletePurchase,
   fetchCategories,
   fetchCategorySpending,
   fetchBudgets,
@@ -21,6 +22,7 @@ import { KpiSummary } from '../components/KpiSummary'
 import { MonthlyEvolutionChart } from '../components/MonthlyEvolutionChart'
 import { RecurringExpensesCard } from '../components/RecurringExpensesCard'
 import { PurchaseForm } from '../components/PurchaseForm'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { formatCurrency } from '../utils/format'
 import { getCurrentYearMonth } from '../utils/dates'
 
@@ -46,6 +48,9 @@ export function DashboardPage() {
   const [tableSearch, setTableSearch] = useState('')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const [mobileResumenSearch, setMobileResumenSearch] = useState('')
+  const [mobileEditId, setMobileEditId] = useState<number | null>(null)
+  const [mobileEditNotes, setMobileEditNotes] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; description: string } | null>(null)
   const personId = personFilter ? Number(personFilter) : undefined
   const cardId = cardFilter ? Number(cardFilter) : undefined
   const isCommon = expenseTypeFilter === 'all' ? undefined : expenseTypeFilter === 'common'
@@ -108,6 +113,26 @@ export function DashboardPage() {
   const commonMutation = useMutation({
     mutationFn: ({ id, is_common }: { id: number; is_common: boolean }) => updatePurchase(id, { is_common }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+      queryClient.invalidateQueries({ queryKey: ['transfer-calculation'] })
+      queryClient.invalidateQueries({ queryKey: ['monthly-balance'] })
+    },
+  })
+
+  const patchMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Parameters<typeof updatePurchase>[1] }) =>
+      updatePurchase(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+      queryClient.invalidateQueries({ queryKey: ['transfer-calculation'] })
+      queryClient.invalidateQueries({ queryKey: ['monthly-balance'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deletePurchase(id),
+    onSuccess: () => {
+      setMobileEditId(null)
       queryClient.invalidateQueries({ queryKey: ['reports'] })
       queryClient.invalidateQueries({ queryKey: ['transfer-calculation'] })
       queryClient.invalidateQueries({ queryKey: ['monthly-balance'] })
@@ -328,7 +353,14 @@ export function DashboardPage() {
             return (
               <div className="purchaseCardList" style={{ display: 'flex' }}>
                 {mobileItems.map((row) => (
-                  <div key={`${row.purchase_id}-${row.installment_index}`} className="purchaseCard">
+                  <div
+                    key={`${row.purchase_id}-${row.installment_index}`}
+                    className="purchaseCard"
+                    onClick={() => { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? '') }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? '') } }}
+                  >
                     <div className="purchaseCardHeader">
                       <span className="purchaseCardDescription">{row.description}</span>
                       <span className="purchaseCardAmount">{formatCurrency(row.amount_ars)}</span>
@@ -360,6 +392,94 @@ export function DashboardPage() {
           })()}
         </div>
       </div>
+
+      {/* Mobile edit sheet */}
+      {(() => {
+        const editRow = mobileEditId !== null ? monthBreakdownData?.items.find((r) => r.purchase_id === mobileEditId) ?? null : null
+        if (!editRow) return null
+        return (
+          <div className="purchaseMobileEditOverlay" onClick={() => setMobileEditId(null)}>
+            <div className="purchaseMobileEditSheet" onClick={(e) => e.stopPropagation()}>
+              <div className="purchaseMobileEditHeader">
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem' }}>{editRow.description}</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                    {formatCurrency(editRow.amount_ars)} · {editRow.purchase_date}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="mobileMenuClose"
+                  style={{ background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+                  onClick={() => setMobileEditId(null)}
+                >✕</button>
+              </div>
+              <div className="purchaseMobileEditBody">
+                <div className="formRow">
+                  <label className="label">Categoría</label>
+                  <select
+                    className="input"
+                    value={editRow.category ?? ''}
+                    onChange={(e) => patchMutation.mutate({ id: editRow.purchase_id, payload: { category: e.target.value || null } })}
+                  >
+                    <option value="">-</option>
+                    {categoriesData?.map((cat) => (
+                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="formRow">
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={editRow.is_common}
+                      style={{ width: '18px', height: '18px' }}
+                      onChange={(e) => patchMutation.mutate({ id: editRow.purchase_id, payload: { is_common: e.target.checked } })}
+                    />
+                    Gasto común
+                  </label>
+                </div>
+                <div className="formRow">
+                  <label className="label">Detalle / Notas</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={mobileEditNotes}
+                    placeholder="Agregar detalle..."
+                    onChange={(e) => setMobileEditNotes(e.target.value)}
+                    onBlur={() => {
+                      if (mobileEditNotes !== (editRow.notes ?? '')) {
+                        patchMutation.mutate({ id: editRow.purchase_id, payload: { notes: mobileEditNotes || null } })
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="button danger"
+                  style={{ width: '100%', marginTop: '8px' }}
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    setMobileEditId(null)
+                    setPendingDelete({ id: editRow.purchase_id, description: editRow.description })
+                  }}
+                >
+                  Eliminar compra
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        message={pendingDelete ? `¿Eliminar "${pendingDelete.description}"? Esta acción no se puede deshacer.` : ''}
+        confirmLabel="Eliminar"
+        dangerous
+        onConfirm={() => { if (pendingDelete) deleteMutation.mutate(pendingDelete.id); setPendingDelete(null) }}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       <div className="dashboard-desktop-only">
       {/* Top Cards Grid */}

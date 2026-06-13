@@ -109,7 +109,7 @@ export function KpiSummary({ yearMonth, personId, cardId, isCommon }: KpiSummary
       </div>
 
       {/* Cuotas activas */}
-      <div className="panel kpi-card">
+      <div className="panel kpi-card desktopOnly">
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Cuotas activas
         </div>
