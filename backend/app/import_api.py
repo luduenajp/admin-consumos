@@ -50,19 +50,6 @@ Si algún campo no es visible en el comprobante, usá null para ese campo.
 Devolvé SOLO el JSON válido, sin texto adicional, sin markdown, sin explicaciones."""
 
 
-def _has_installment_schedule(*, session, purchase_id: int, year_month: str, installment_index: int) -> bool:
-    from sqlmodel import select
-
-    from app.models import InstallmentSchedule
-
-    stmt = select(InstallmentSchedule).where(
-        InstallmentSchedule.purchase_id == purchase_id,
-        InstallmentSchedule.year_month == year_month,
-        InstallmentSchedule.installment_index == installment_index,
-    )
-    return session.exec(stmt).first() is not None
-
-
 def _has_installment_by_index(*, session, purchase_id: int, installment_index: int) -> bool:
     """Return True if ANY InstallmentSchedule row exists for (purchase_id, installment_index),
     regardless of year_month. Used to avoid duplicates when re-importing later statements."""
