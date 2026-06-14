@@ -1,0 +1,14 @@
+=== Ambiguous purchase pairs (same date+amount, different description) ===
+Review manually and delete the duplicate if needed.
+
+2026-04-08  ARS    300000.00
+  #268: Reserva cumple salvi
+  #269: Reserva cumple Lorenzo
+
+2026-05-13  ARS      3348.28
+  #358: Caminos de las s
+  #385: CAMINOS DE LAS SIER
+
+2026-05-13  ARS      6696.55
+  #357: Caminos de las s
+  #384: CAMINOS DE LAS SIER
