@@ -1,16 +1,21 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { AdminPage } from './pages/admin-page'
-import { DashboardPage } from './pages/dashboard-page'
-import { ImportPage } from './pages/import-page'
-import { PurchasesPage } from './pages/purchases-page'
-import { BudgetPage } from './pages/budget-page'
-import { CategoriesPage } from './pages/categories-page'
-import { GoalsPage } from './pages/goals-page'
-import { SavingsPage } from './pages/savings-page'
-import { NuevaTransferenciaPage } from './pages/nueva-transferencia-page'
+
+// Lazy-loaded por ruta: cada página es su propio chunk y las libs pesadas
+// (recharts) se descargan solo al entrar a las páginas que las usan.
+const AdminPage = lazy(() => import('./pages/admin-page').then((m) => ({ default: m.AdminPage })))
+const DashboardPage = lazy(() => import('./pages/dashboard-page').then((m) => ({ default: m.DashboardPage })))
+const ImportPage = lazy(() => import('./pages/import-page').then((m) => ({ default: m.ImportPage })))
+const PurchasesPage = lazy(() => import('./pages/purchases-page').then((m) => ({ default: m.PurchasesPage })))
+const BudgetPage = lazy(() => import('./pages/budget-page').then((m) => ({ default: m.BudgetPage })))
+const CategoriesPage = lazy(() => import('./pages/categories-page').then((m) => ({ default: m.CategoriesPage })))
+const GoalsPage = lazy(() => import('./pages/goals-page').then((m) => ({ default: m.GoalsPage })))
+const SavingsPage = lazy(() => import('./pages/savings-page').then((m) => ({ default: m.SavingsPage })))
+const NuevaTransferenciaPage = lazy(() =>
+  import('./pages/nueva-transferencia-page').then((m) => ({ default: m.NuevaTransferenciaPage })),
+)
 
 const NAV_GROUPS = [
   {
@@ -108,17 +113,19 @@ function App() {
 
       <main className="appMain">
         <ErrorBoundary>
-          <Routes>
-            <Route element={<DashboardPage />} path="/" />
-            <Route element={<PurchasesPage />} path="/purchases" />
-            <Route element={<ImportPage />} path="/import" />
-            <Route element={<BudgetPage />} path="/budget" />
-            <Route element={<CategoriesPage />} path="/categories" />
-            <Route element={<GoalsPage />} path="/goals" />
-            <Route element={<SavingsPage />} path="/ahorros" />
-            <Route element={<NuevaTransferenciaPage />} path="/nueva-transferencia" />
-            <Route element={<AdminPage />} path="/admin" />
-          </Routes>
+          <Suspense fallback={<div className="muted" style={{ padding: '2rem' }}>Cargando…</div>}>
+            <Routes>
+              <Route element={<DashboardPage />} path="/" />
+              <Route element={<PurchasesPage />} path="/purchases" />
+              <Route element={<ImportPage />} path="/import" />
+              <Route element={<BudgetPage />} path="/budget" />
+              <Route element={<CategoriesPage />} path="/categories" />
+              <Route element={<GoalsPage />} path="/goals" />
+              <Route element={<SavingsPage />} path="/ahorros" />
+              <Route element={<NuevaTransferenciaPage />} path="/nueva-transferencia" />
+              <Route element={<AdminPage />} path="/admin" />
+            </Routes>
+          </Suspense>
         </ErrorBoundary>
       </main>
     </div>
