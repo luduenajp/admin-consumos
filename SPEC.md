@@ -689,7 +689,32 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 - **Endpoint:** `GET /api/reports/transfers`
 - **Query Params:** `year_month` (required)
 - **Steps:** Executes Fondo Común algorithm (BR-001).
-- **Result:** `200` → `TransferCalculationResponse { year_month, ingresos, total_ingresos, gastos_por_persona, transferencias, is_balanced, balance_delta, transferencias_internas }`
+- **Result:** `200` → `TransferCalculationResponse`:
+
+  | Field | Type | Meaning |
+  |---|---|---|
+  | `year_month` | str | The requested month. |
+  | `ingresos` | `IngresoItem[]` | `{ person_id, person_name, amount }` — incomes per person (BR-001 input). |
+  | `total_ingresos` | float | Sum of all incomes for the month. |
+  | `total_common_expenses` | float | Sum of common (`is_common`) installment amounts in ARS (BR-001 step 1). |
+  | `total_personal_expenses` | float | Sum of personal (non-common) installment amounts in ARS, attributed per BR-017. |
+  | `gastos_por_persona` | `GastoPersonaItem[]` | Per-person breakdown — see below. |
+  | `transferencias` | `TransferenciaItem[]` | `{ from_person, to_person, amount }` — the suggested transfers to balance the month. |
+  | `is_balanced` | bool | `true` if `|balance_delta| ≤ 0.01` (BR-001 step 9). |
+  | `balance_delta` | float | Sum of all per-person `difference` values (should be ~0 — INV-014). |
+  | `transferencias_internas` | `DebtTransferRead[]` | DebtTransfers already recorded for the month, used as the adjustment (BR-021). |
+
+  **`GastoPersonaItem`** `{ person_id, person_name, ... }`:
+
+  | Field | Meaning |
+  |---|---|
+  | `paid_amount` | What this person actually paid (installments allocated via `PurchasePayer` shares, BR-001 step 6). |
+  | `common_paid` | Portion of `paid_amount` that went to **common** expenses. |
+  | `common_should_pay` | This person's fair share of `total_common_expenses` (the pool split). |
+  | `should_pay` | What they *should* have paid = `Income − Target Cash` (BR-001 step 5). |
+  | `adjustment` | Net DebtTransfer activity = sent − received (BR-021). |
+  | `difference` | `(paid_amount − should_pay) + adjustment` (BR-001 step 7). `< 0` underpaid, `> 0` overpaid. |
+
 - **Business Rules:** BR-001, BR-017, BR-021
 - **Edge Cases:** No incomes for the month → `404 "No incomes found for this month"`.
 
@@ -981,6 +1006,15 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 **Rules:**
 - `person_id` must reference an existing `Person` — raises `ValueError` (→ HTTP 400) if not found.
 - Returns `SavingRead` with `current_amount = null`.
+
+### UC-072: Update Saving
+
+**Actor:** User
+**Trigger:** `PATCH /api/savings/{saving_id}` with `SavingUpdate { investment_type?, institution?, notes? }`
+**Rules:**
+- Updates only the provided fields. `currency` and `person_id` are **not** editable.
+- Returns `SavingRead` with `current_amount`/`current_amount_date` recomputed from the latest `SavingSnapshot`.
+- Raises `ValueError` (→ HTTP 404) if the saving is not found.
 
 ### UC-073: Delete Saving (Cascade)
 
