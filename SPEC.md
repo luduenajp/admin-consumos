@@ -878,7 +878,7 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
   3. The file is injected into `PurchaseForm` (`initialFile` prop) with `payment_method: 'transfer'`, triggering UC-053 extraction and auto-fill
   4. The user confirms and saves manually (confirm-before-save)
 - **Backend fallback:** `POST /share-target` (no auth) returns `303 → /nueva-transferencia` discarding the file, for the case where the SW is not controlling the page.
-- **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*` and `/share-target` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials; a 401 makes the PWA non-installable). See `PUBLIC_PATHS` in `backend/app/main.py`.
+- **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*`, `/share-target` and `/api/backup/db` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials and a 401 makes the PWA non-installable; `/api/backup/db` has its own Bearer-token auth via `BACKUP_TOKEN` — UC-100). See `PUBLIC_PATHS` in `backend/app/main.py`.
 - **SPA fallback:** `SPAStaticFiles` in `main.py` serves `index.html` for client-side deep links (e.g. `/nueva-transferencia`); API 404s are not masked.
 
 ### UC-055: Detect Card from Statement File

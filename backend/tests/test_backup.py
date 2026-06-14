@@ -40,6 +40,42 @@ def backup_client(engine, monkeypatch, tmp_path):
 
 
 @pytest.fixture()
+def backup_client_with_basic_auth(engine, monkeypatch, tmp_path):
+    """Like backup_client but with the app's Basic Auth ALSO enabled.
+
+    Reproduces production: the backup endpoint must be reachable with only the
+    Bearer token, since the Basic Auth middleware would otherwise reject it
+    (regression guard for /api/backup/db being absent from PUBLIC_PATHS).
+    """
+    from sqlmodel import SQLModel, create_engine
+    from sqlalchemy import event as sa_event
+
+    db_file = tmp_path / "app.db"
+    file_engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False},
+    )
+
+    @sa_event.listens_for(file_engine, "connect")
+    def _pragma(conn, _):
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    SQLModel.metadata.create_all(file_engine)
+
+    monkeypatch.setattr(db_module, "engine", file_engine)
+    monkeypatch.setenv("BACKUP_TOKEN", "supersecret")
+    monkeypatch.setenv("DB_PATH", str(db_file))
+    monkeypatch.setenv("APP_USERNAME", "testuser")
+    monkeypatch.setenv("APP_PASSWORD", "testpass")
+
+    application = create_app()
+    with TestClient(application, raise_server_exceptions=True) as c:
+        yield c
+
+
+@pytest.fixture()
 def no_token_client(engine, monkeypatch):
     """TestClient WITHOUT BACKUP_TOKEN set."""
     monkeypatch.setattr(db_module, "engine", engine)
@@ -94,3 +130,24 @@ def test_backup_200_valid_token(backup_client):
     content = r.content
     assert len(content) > 0
     assert content[:16] == b"SQLite format 3\x00"
+
+
+def test_backup_reachable_with_bearer_only_when_basic_auth_enabled(
+    backup_client_with_basic_auth,
+):
+    """With Basic Auth enabled, /api/backup/db works with only the Bearer token.
+
+    Regression: previously the Basic Auth middleware rejected (401) the
+    Bearer-only request because /api/backup/db was missing from PUBLIC_PATHS.
+    """
+    r = backup_client_with_basic_auth.get(
+        "/api/backup/db", headers={"Authorization": "Bearer supersecret"}
+    )
+    assert r.status_code == 200
+    assert r.content[:16] == b"SQLite format 3\x00"
+
+
+def test_other_api_paths_still_require_basic_auth(backup_client_with_basic_auth):
+    """The backup exemption must not leak: other /api paths still need Basic Auth."""
+    r = backup_client_with_basic_auth.get("/api/people")
+    assert r.status_code == 401

@@ -15,8 +15,10 @@ from starlette.responses import Response
 
 # Rutas públicas: /health para healthchecks; manifest/sw/icons porque Chrome
 # los fetchea sin credenciales y un 401 hace la PWA no instalable;
-# /share-target porque el POST del share sheet llega sin Authorization.
-PUBLIC_PATHS = {"/health", "/manifest.webmanifest", "/sw.js", "/share-target"}
+# /share-target porque el POST del share sheet llega sin Authorization;
+# /api/backup/db porque tiene su propia auth por Bearer token (BACKUP_TOKEN),
+# el backup externo manda solo ese header (no Basic Auth).
+PUBLIC_PATHS = {"/health", "/manifest.webmanifest", "/sw.js", "/share-target", "/api/backup/db"}
 
 
 class SPAStaticFiles(StaticFiles):
