@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Pre-push gate: corre la suite completa antes de cada 'git push'.
+# Bloquea el push si algo falla. Para emergencias: git push --no-verify
+#
+# Instalación (una sola vez): git config core.hooksPath .githooks
+
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VENV_DIR="$ROOT_DIR/.venv"
+
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+
+fail() {
+  echo -e "${RED}✗ pre-push: $1${NC}"
+  echo -e "${YELLOW}  Push abortado. Arreglá lo de arriba, o usá 'git push --no-verify' si es una emergencia.${NC}"
+  exit 1
+}
+
+echo -e "${GREEN}▶ pre-push: corriendo la suite completa...${NC}"
+
+# --- Backend ---
+if [ ! -d "$VENV_DIR" ]; then
+  fail "no existe el virtualenv ($VENV_DIR). Corré ./start.sh una vez para crearlo."
+fi
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+
+echo -e "${GREEN}▶ backend: pytest${NC}"
+( cd "$ROOT_DIR/backend" && python -m pytest tests/ -q ) || fail "tests del backend fallaron."
+
+# --- Frontend ---
+if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
+  fail "faltan deps del frontend. Corré: npm install --prefix frontend"
+fi
+
+echo -e "${GREEN}▶ frontend: vitest${NC}"
+npm run --prefix "$ROOT_DIR/frontend" test:run --silent || fail "tests del frontend fallaron."
+
+echo -e "${GREEN}▶ frontend: build (tsc + vite)${NC}"
+npm run --prefix "$ROOT_DIR/frontend" build --silent || fail "el build del frontend falló (TypeScript o Vite)."
+
+echo -e "${GREEN}✓ pre-push: todo verde. Pusheando.${NC}"

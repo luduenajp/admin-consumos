@@ -204,6 +204,14 @@ If an existing purchase is found, only the missing `InstallmentSchedule` entry i
 
 - **`./start.sh`**: Inicia backend y frontend en paralelo. Crea virtualenv si no existe, instala deps.
 - **`examples/validate_pdf.py`**: Valida formato de PDFs. Uso: \`python validate_pdf.py <archivo.pdf> [contraseña] [--debug]\`
+- **`scripts/smoke_test.sh`**: Pega los endpoints clave de una instancia corriendo y verifica que respondan 200. Uso: `./scripts/smoke_test.sh` (default `http://localhost:8000`); `BASE_URL=...` para apuntar a prod; `APP_USERNAME=... APP_PASSWORD=...` si tiene Basic Auth.
+
+## Red de seguridad (hooks)
+
+- **Hook `pre-push`** (`.githooks/pre-push`): antes de cada `git push` corre la suite completa — `pytest` (backend) + `vitest` (frontend) + `npm run build` (TypeScript + Vite). Bloquea el push si algo falla.
+  - **Instalación (una sola vez por clon):** `git config core.hooksPath .githooks`
+  - **Emergencia:** `git push --no-verify` saltea el gate.
+  - Se eligió `pre-push` y no `pre-commit` para no frenar el flujo de commits (la suite tarda ~30-40s); el gate corre donde importa: antes de compartir/deployar.
 
 ## Core Financial Logic (Fondo Común)
 
