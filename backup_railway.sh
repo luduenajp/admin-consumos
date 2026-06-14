@@ -116,17 +116,17 @@ log "Backup saved to $DEST"
 date +%s > "$LAST_BACKUP_FILE"
 
 # ── Rotation: keep at most 30 backups ─────────────────────────────────────────
+# bash 3.2-compatible (macOS /bin/bash has no `mapfile`). Files sort oldest-first
+# thanks to the YYYY-MM-DD timestamp in the name.
 MAX_BACKUPS=30
-# List files sorted alphabetically (oldest first because of YYYY-MM-DD format)
-mapfile -t backup_files < <(find "$BACKUP_DIR" -maxdepth 1 -name "app_*.db" | sort)
-count=${#backup_files[@]}
+count=$(find "$BACKUP_DIR" -maxdepth 1 -name "app_*.db" | wc -l | tr -d ' ')
 
-if (( count > MAX_BACKUPS )); then
+if [ "$count" -gt "$MAX_BACKUPS" ]; then
     to_delete=$(( count - MAX_BACKUPS ))
     log "Rotating: $count backups found, deleting $to_delete oldest..."
-    for (( i=0; i<to_delete; i++ )); do
-        log "Deleting old backup: ${backup_files[$i]}"
-        rm -f "${backup_files[$i]}"
+    find "$BACKUP_DIR" -maxdepth 1 -name "app_*.db" | sort | head -n "$to_delete" | while IFS= read -r f; do
+        log "Deleting old backup: $f"
+        rm -f "$f"
     done
 fi
 
