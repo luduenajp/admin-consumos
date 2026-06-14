@@ -22,6 +22,9 @@ backups/**/.last_backup
 # Git worktrees
 .worktrees/
 
+# Superpowers transient brainstorm sessions
+.superpowers/
+
 # IDE / Tooling
 .vscode/
 .idea/
