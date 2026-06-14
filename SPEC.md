@@ -1,8 +1,8 @@
 # Software Specification Document (SDD)
 
 **Project:** Admin Consumos
-**Version:** 1.0
-**Last Updated:** 2026-03-14
+**Version:** 1.1
+**Last Updated:** 2026-06-14
 
 ---
 
@@ -38,7 +38,7 @@ Admin Consumos is a local-only, single-user web application for managing househo
 | `ShareType` | `percent`, `fixed` | How a payer's share is calculated |
 | `PaymentMethod` | `card`, `transfer`, `cash` | How a purchase was paid |
 
-### 2.2 Entities (12 tables)
+### 2.2 Entities (19 tables)
 
 #### Person
 | Field | Type | Constraints |
@@ -55,11 +55,33 @@ Admin Consumos is a local-only, single-user web application for managing househo
 | `owner_person_id` | int | FK → `person.id`, required |
 | `last4` | str? | optional, last 4 digits |
 
+#### CardStatement
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `card_id` | int | FK → `card.id`, indexed |
+| `year_month` | str | `YYYY-MM` — statement (billing-cycle) month |
+| `closing_date` | date | exact closing date of the statement |
+| `due_date` | date? | optional payment due date |
+
+Unique constraint: `UNIQUE(card_id, year_month)` (`uq_cardstatement_card_month`). Records the closing/due dates per card per month, used to suggest `first_installment_month` for a purchase (BR-027, UC-091).
+
 #### Debtor
 | Field | Type | Constraints |
 |---|---|---|
 | `id` | int | PK, auto |
 | `name` | str | required |
+
+#### Beneficiary
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `name` | str | required |
+| `cbu` | str? | optional, bank CBU |
+| `cuit` | str? | optional, tax ID |
+| `alias` | str? | optional, transfer alias |
+
+A transfer recipient (e.g. a third-party CBU/alias). Used by comprobante extraction (UC-053) to match an extracted nombre/CBU/CUIT/alias against a known recipient. Created via the `beneficiary` table at startup by `db.py:_migrate_add_columns()` if missing.
 
 #### Category
 | Field | Type | Constraints |
@@ -100,6 +122,7 @@ Unique constraint: logical (year_month, currency) — enforced via upsert logic 
 | `is_common` | bool | default false |
 | `debtor_id` | int? | FK → `debtor.id`, indexed |
 | `debt_settled` | bool | default false |
+| `import_batch_id` | int? | FK → `importbatch.id`, indexed. Set when the purchase originated from a file/CSV import (UC-056). |
 
 #### PurchasePayer
 | Field | Type | Constraints |
@@ -122,6 +145,8 @@ Composite PK: (`purchase_id`, `person_id`).
 | `amount_original` | float | per-installment amount |
 | `amount_ars` | float? | currently unused |
 
+Unique constraint: `UNIQUE INDEX ux_installment_purchase_index (purchase_id, installment_index)` — created at startup by `db.py:_migrate_dedupe_installments()` (after de-duplicating any pre-existing rows). Prevents two schedule entries for the same installment of a purchase. See BR-026.
+
 #### ImportedRow
 | Field | Type | Constraints |
 |---|---|---|
@@ -130,6 +155,21 @@ Composite PK: (`purchase_id`, `person_id`).
 | `source_file` | str | required |
 | `row_fingerprint` | str | indexed, unique |
 | `parsed_payload_json` | str | JSON blob of parsed row data |
+
+#### ImportBatch
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `imported_at` | str | ISO-8601 datetime |
+| `provider` | str | indexed |
+| `source_file` | str | required |
+| `card_id` | int? | FK → `card.id` |
+| `statement_year_month` | str? | `YYYY-MM` |
+| `purchases_created` | int | default 0 |
+| `purchases_skipped` | int | default 0 |
+| `purchases_parsed` | int | default 0 |
+
+One record per import run (UC-050/051/052). Purchases created in the run link back via `Purchase.import_batch_id`, enabling per-batch listing (UC-025 `import_batch_id` filter) and batch history (UC-056).
 
 #### MonthlyBudget
 | Field | Type | Constraints |
@@ -161,6 +201,20 @@ Multiple incomes per person per month are allowed.
 | `transfer_date` | date | default today |
 | `notes` | str? | optional |
 
+#### FamilyGoal
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `title` | str | required |
+| `description` | str? | optional |
+| `target_amount` | float? | optional, estimated budget in ARS |
+| `due_date` | str? | `YYYY-MM` |
+| `is_completed` | bool | default false |
+| `notes` | str? | optional |
+| `priority` | str? | free text: `"low"`, `"medium"`, `"high"` |
+
+A household savings/spending goal shown on the `/goals` page (UC-068, UC-080..083).
+
 #### Saving
 | Field | Type | Constraints |
 |---|---|---|
@@ -180,6 +234,16 @@ Multiple incomes per person per month are allowed.
 | `amount` | float | `> 0` |
 
 Current value of a `Saving` is derived from its most recent `SavingSnapshot`. No `current_amount` field is stored on `Saving`.
+
+#### SavingsExchangeRate
+| Field | Type | Constraints |
+|---|---|---|
+| `id` | int | PK, auto |
+| `date` | str | indexed, `YYYY-MM-DD` |
+| `usd_buy` | float | price the bank pays when buying USD (received when selling USD) |
+| `usd_sell` | float | price the bank charges when selling USD (paid when buying USD) |
+
+Manually-entered USD buy/sell quotes used to value mixed-currency savings totals over time (UC-079). Independent from `FxRate` (which is monthly and report-oriented).
 
 ---
 
@@ -341,12 +405,28 @@ This means if Person A already sent money to Person B for this month, that reduc
 
 `upsert_fx_rate` checks if a rate for `(year_month, currency)` exists. If yes, updates `rate_to_ars`; otherwise creates a new record.
 
-### BR-024: Person Filter Allocation via PurchasePayer Shares
+### BR-025: Person Filter Allocation via PurchasePayer Shares
 
 When reports are filtered by `person_id`, amounts are allocated proportionally based on the person's `PurchasePayer` share:
 - `PERCENT` share: `amount_ars × (share_value / 100)`
 - `FIXED` share: `share_value` directly
 - If person has no payer record for a purchase, they get 0 (unless they are the owner, in which case 100%).
+
+### BR-026: Installment Schedule Uniqueness
+
+A purchase may have at most one `InstallmentSchedule` entry per `installment_index`. Enforced by `UNIQUE INDEX ux_installment_purchase_index (purchase_id, installment_index)`, created at startup by `db.py:_migrate_dedupe_installments()` after removing any pre-existing duplicates. This is the constraint that makes re-import idempotent: BR-018 matching links a re-imported row to an existing purchase and only **adds the missing** installment, and this index guarantees a duplicate index can never be inserted. (Supersedes the earlier assumption in INV-005 that re-import could create extra installments.)
+
+### BR-027: First Installment Month Suggestion from Card Statements
+
+`suggest_first_installment_month(card_id, purchase_date)` (UC-091) returns the `year_month` whose billing cycle a purchase falls into:
+1. Find the nearest `CardStatement` for the card with `closing_date >= purchase_date` (ordered ascending). If found → return `(its year_month, its closing_date, fallback=False)`.
+2. Otherwise → fall back to the **next calendar month** after `purchase_date` and return `(year_month, None, fallback=True)`.
+
+This only suggests a value for the UI; it does not change how `create_purchase` generates the schedule (BR-008).
+
+### BR-028: Strict Duplicate Purchase Rejection
+
+`POST /api/purchases` (UC-020) calls `find_duplicate_purchase` before creating. If an existing purchase matches on `card_id`, `payment_method`, `purchase_date`, `description`, `currency`, `amount_original`, and `installments_total`, the request is rejected with `409 "Duplicate purchase"`. This guards against accidental double-submits (e.g. the comprobante flow, UC-053/054) and is independent of import deduplication (BR-005, which uses fingerprints on `ImportedRow`).
 
 ---
 
@@ -441,6 +521,30 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Steps:** Returns unique non-null category values from `Purchase.category`.
 - **Result:** `200` → `string[]` (sorted).
 
+### UC-014: List Beneficiaries
+
+- **Endpoint:** `GET /api/beneficiaries`
+- **Result:** `200` → `BeneficiaryRead[]` `{ id, name, cbu?, cuit?, alias? }`
+
+### UC-015: Create Beneficiary
+
+- **Endpoint:** `POST /api/beneficiaries`
+- **Payload:** `{ name, cbu?, cuit?, alias? }`
+- **Result:** `201` → `BeneficiaryRead`
+
+### UC-016: Update Beneficiary
+
+- **Endpoint:** `PUT /api/beneficiaries/{beneficiary_id}`
+- **Payload:** `BeneficiaryUpdate { name?, cbu?, cuit?, alias? }`
+- **Result:** `200` → `BeneficiaryRead`
+- **Edge Cases:** Not found → `404`.
+
+### UC-017: Delete Beneficiary
+
+- **Endpoint:** `DELETE /api/beneficiaries/{beneficiary_id}`
+- **Result:** `204` No Content
+- **Edge Cases:** Not found → `404`.
+
 ---
 
 ## 5. Use Cases — Purchase Lifecycle
@@ -464,8 +568,10 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
   6. Create `InstallmentSchedule` entries (BR-008)
   7. Single commit (BR-013)
 - **Result:** `201` → `PurchaseRead` with populated `payers`
-- **Business Rules:** BR-003, BR-004, BR-007, BR-008, BR-013, BR-014, BR-015
+- **Business Rules:** BR-003, BR-004, BR-007, BR-008, BR-013, BR-014, BR-015, BR-028
+- **Steps (pre-check):** Before step 1, `find_duplicate_purchase` runs; an exact match → `409 "Duplicate purchase"` (BR-028).
 - **Edge Cases:**
+  - Duplicate purchase (BR-028) → `409 "Duplicate purchase"`
   - Missing card → `400 "Card not found"`
   - Missing person → `400 "Person not found"`
   - PERCENT shares don't sum to 100 → `400`
@@ -514,10 +620,17 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
   - `min_amount`, `max_amount` — range on `amount_original`
   - `description_search` — case-insensitive substring match
   - `person_id` — filters to purchases where person has a `PurchasePayer` entry
+  - `import_batch_id` — filters to purchases created by a specific import batch (UC-056)
   - `page` (default 1), `page_size` (default 50)
 - **Result:** `200` → `PaginatedResponse<PurchaseRead>` with `{ items, total, page, page_size, pages }`
-- **Business Rules:** BR-024 (person filter uses PurchasePayer join)
+- **Business Rules:** BR-025 (person filter uses PurchasePayer join)
 - **Edge Cases:** No matches → `{ items: [], total: 0, page: 1, page_size: 50, pages: 0 }`
+
+### UC-026: Get Categorization Rules
+
+- **Endpoint:** `GET /api/purchases/categorization-rules`
+- **Steps:** Returns the rules used by auto-categorization (UC-024): the hardcoded keyword map (Appendix A) plus any learned CUIL/description → category rules derived from the existing data.
+- **Result:** `200` → `{ ... }` (object describing keyword and learned rules; consumed by the Purchases page for display/explanation).
 
 ---
 
@@ -527,9 +640,9 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 
 - **Endpoint:** `GET /api/reports/month-breakdown`
 - **Query Params:** `year_month` (required), `card_id?`, `person_id?`, `is_common?`
-- **Steps:** Joins `InstallmentSchedule` with `Purchase`, `Debtor`, `Card`, `Person` (owner). Converts USD using FX rates (BR-019). If `person_id` filter, allocates amounts via PurchasePayer shares (BR-024).
+- **Steps:** Joins `InstallmentSchedule` with `Purchase`, `Debtor`, `Card`, `Person` (owner). Converts USD using FX rates (BR-019). If `person_id` filter, allocates amounts via PurchasePayer shares (BR-025).
 - **Result:** `200` → `MonthBreakdownResponse { year_month, total_ars, items: MonthBreakdownRow[] }`
-- **Business Rules:** BR-002, BR-019, BR-024
+- **Business Rules:** BR-002, BR-019, BR-025
 
 ### UC-031: Monthly Totals
 
@@ -537,7 +650,7 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Query Params:** `card_id?`, `person_id?`
 - **Steps:** Aggregates all installment schedule entries by `year_month`, converting USD via FX rates.
 - **Result:** `200` → `ReportMonthlyRow[] { year_month, total_ars }` (sorted ascending)
-- **Business Rules:** BR-002, BR-019, BR-024
+- **Business Rules:** BR-002, BR-019, BR-025
 
 ### UC-032: Installment Timeline
 
@@ -545,7 +658,7 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Query Params:** `months_ahead` (default 12), `card_id?`, `person_id?`, `is_common?`
 - **Steps:** Returns installment commitments from `current_month - 3` to `current_month + months_ahead`.
 - **Result:** `200` → `TimelineRow[] { year_month, total_ars }` (sorted ascending)
-- **Business Rules:** BR-002, BR-019, BR-024
+- **Business Rules:** BR-002, BR-019, BR-025
 
 ### UC-033: Category Spending
 
@@ -553,7 +666,7 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Query Params:** `card_id?`, `person_id?`, `year_month?`, `is_common?`
 - **Steps:** Aggregates installment amounts by `purchase.category`. Categories with `NULL` name show as `"Sin categoría"`.
 - **Result:** `200` → `CategorySpendingRow[] { category, total_ars }` (sorted by total descending)
-- **Business Rules:** BR-002, BR-019, BR-024
+- **Business Rules:** BR-002, BR-019, BR-025
 
 ### UC-034: Debt Summary
 
@@ -587,6 +700,14 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Steps:** Generates an XLSX file with sheets: Balance, Gastos por Persona, Transferencias, Detalle del Mes, Mes Siguiente (forecast), Deudas de Terceros.
 - **Result:** `200` → binary XLSX file with `Content-Disposition: attachment; filename=reporte_YYYY-MM.xlsx`
 - **Business Rules:** Uses same data as UC-035, UC-036, UC-030, UC-034.
+
+### UC-038: Recurring Expenses
+
+- **Endpoint:** `GET /api/reports/recurring-expenses`
+- **Query Params:** `min_occurrences` (default 3)
+- **Steps:** Groups purchases by normalized description (BR-020) + currency; returns groups that appear in at least `min_occurrences` distinct months.
+- **Result:** `200` → `RecurringExpenseRow[] { description, category?, currency, occurrences, total_purchases, avg_amount, months[], last_seen }`
+- **Business Rules:** BR-020 (normalization)
 
 ---
 
@@ -735,6 +856,25 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 - **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*` and `/share-target` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials; a 401 makes the PWA non-installable). See `PUBLIC_PATHS` in `backend/app/main.py`.
 - **SPA fallback:** `SPAStaticFiles` in `main.py` serves `index.html` for client-side deep links (e.g. `/nueva-transferencia`); API 404s are not masked.
 
+### UC-055: Detect Card from Statement File
+
+- **Endpoint:** `POST /api/import/detect`
+- **Form Params:** `file` (UploadFile — `.xlsx`/`.xls`/`.pdf`), `password?` (str, for encrypted PDFs)
+- **Steps:**
+  1. Validate extension; unsupported → `400`
+  2. Parse the file (XLSX or PDF) and extract a holder hint (nombre, last4, card type, bank)
+  3. Match the holder against existing `Card` records to suggest a card; detect the statement month from the parsed rows
+  4. **Nothing is created** — this is a pre-flight to pre-select the card/provider in the Import UI
+- **Result:** `200` → `{ detected_holder, detected_last4, detected_card_type, detected_bank, suggested_card_id, suggested_card_name, statement_year_month, row_count }`
+- **Edge Cases:** Wrong extension → `400`; parse failure → `500`.
+
+### UC-056: List Import Batches
+
+- **Endpoint:** `GET /api/import/batches`
+- **Steps:** Returns the history of import runs (`ImportBatch`), joined with `Card` for the card name.
+- **Result:** `200` → `ImportBatchRead[] { id, imported_at, provider, source_file, card_id, card_name?, statement_year_month?, purchases_created, purchases_skipped, purchases_parsed }`
+- **Notes:** Each purchase created by a run carries `import_batch_id`; the Purchases page can filter by it (UC-025).
+
 ---
 
 ## 9. Use Cases — Frontend Pages
@@ -820,6 +960,14 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 5. The history chart panel shows checkboxes for each saving; user selects one or more to display their historical snapshots as lines on a Recharts LineChart.
 6. The new saving form allows creation of a saving with owner (person), investment type, institution, currency, and optional notes.
 
+### UC-068: Goals Page (`/goals`)
+
+- **Features:**
+  - List of family goals with title, description, target amount, due month, priority, completion status (UC-080)
+  - Create goal form (UC-081)
+  - Inline edit / mark complete (UC-082)
+  - Delete goal with confirmation (UC-083)
+
 ### UC-070: List Savings
 
 **Actor:** Frontend  
@@ -856,6 +1004,103 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 **Rules:**
 - `amount` must be `> 0` (Pydantic validation, → HTTP 422 if violated).
 - `saving_id` must reference an existing `Saving` — raises `ValueError` (→ HTTP 404) if not found.
+
+### UC-076: Delete Snapshot
+
+**Trigger:** `DELETE /api/savings/{saving_id}/snapshots/{snapshot_id}`
+**Rules:** Deletes the snapshot; `204` on success, `404` if not found.
+
+### UC-077: List Savings Exchange Rates
+
+**Trigger:** `GET /api/savings-exchange-rate`
+**Returns:** `list[SavingsExchangeRateRead] { id, date, usd_buy, usd_sell }`.
+
+### UC-078: Create Savings Exchange Rate
+
+**Trigger:** `POST /api/savings-exchange-rate` with `{ date (YYYY-MM-DD), usd_buy, usd_sell }`
+**Rules:** `usd_buy > 0`, `usd_sell > 0` (→ 422). Stores a manual USD buy/sell quote for valuing mixed-currency savings (UC-079).
+
+### UC-079: Savings Total History
+
+**Trigger:** `GET /api/savings/total-history`
+**Steps:** For each date on which any `SavingSnapshot` exists, forward-fills each saving's last known value and sums by currency. Converts the combined total to ARS and to USD using the closest **prior** `SavingsExchangeRate`.
+**Returns:** `list[SavingsTotalHistoryPoint] { date, total_ars, total_usd, total_in_ars?, total_in_usd? }`. The `total_in_*` fields are `null` when no exchange rate is available for/before that date.
+
+---
+
+## 9b. Use Cases — Family Goals
+
+### UC-080: List Goals
+
+- **Endpoint:** `GET /api/goals`
+- **Result:** `200` → `FamilyGoalRead[]`
+
+### UC-081: Create Goal
+
+- **Endpoint:** `POST /api/goals`
+- **Payload:** `FamilyGoalCreate { title, description?, target_amount?, due_date? (YYYY-MM), notes?, priority? }`
+- **Result:** `201` → `FamilyGoalRead`
+
+### UC-082: Update Goal
+
+- **Endpoint:** `PATCH /api/goals/{goal_id}`
+- **Payload:** `FamilyGoalUpdate { title?, description?, target_amount?, due_date?, is_completed?, notes?, priority? }`
+- **Result:** `200` → `FamilyGoalRead`
+- **Edge Cases:** Not found → `404`.
+
+### UC-083: Delete Goal
+
+- **Endpoint:** `DELETE /api/goals/{goal_id}`
+- **Result:** `204` No Content
+- **Edge Cases:** Not found → `404`.
+
+---
+
+## 9c. Use Cases — Card Statements
+
+### UC-090: List Card Statements
+
+- **Endpoint:** `GET /api/card-statements`
+- **Query Params:** `card_id` (required)
+- **Result:** `200` → `CardStatementRead[] { id, card_id, year_month, closing_date, due_date? }`
+
+### UC-091: Suggest First Installment Month
+
+- **Endpoint:** `GET /api/card-statements/suggest-month`
+- **Query Params:** `card_id` (required), `purchase_date` (required)
+- **Steps:** Applies BR-027 to suggest the billing-cycle month for a purchase.
+- **Result:** `200` → `SuggestMonthResponse { year_month, closing_date?, fallback }` — `fallback=true` means no matching statement existed and the next-calendar-month heuristic was used.
+- **Business Rules:** BR-027
+
+### UC-092: Upsert Card Statement
+
+- **Endpoint:** `POST /api/card-statements`
+- **Payload:** `CardStatementCreate { card_id, year_month, closing_date, due_date? }`
+- **Steps:** Upserts by `(card_id, year_month)` — updates `closing_date`/`due_date` if a record exists, else creates.
+- **Result:** `200` → `CardStatementRead`
+- **Validation:** `year_month` matches `YYYY-MM`.
+
+### UC-093: Delete Card Statement
+
+- **Endpoint:** `DELETE /api/card-statements/{statement_id}`
+- **Result:** `204` No Content
+- **Edge Cases:** Not found → `404`.
+
+---
+
+## 9d. Use Cases — Operations
+
+### UC-100: Download Database Backup
+
+- **Endpoint:** `GET /api/backup/db`
+- **Auth:** `Authorization: Bearer <BACKUP_TOKEN>` (env var). Separate from the app's Basic Auth.
+- **Steps:**
+  1. If `BACKUP_TOKEN` is not configured → `503 "Backup not configured"`
+  2. If the bearer token is missing/invalid (constant-time compare) → `401 "Unauthorized"`
+  3. Take a consistent SQLite snapshot via `sqlite3.Connection.backup()` into a temp file, then stream it (deleting the temp file afterwards)
+- **Result:** `200` → binary `application/octet-stream`, `Content-Disposition: attachment; filename=app_YYYY-MM-DD.db`
+- **Edge Cases:** DB file missing → `503 "Database not found"`.
+- **Notes:** Used by the local backup script (`backup_railway.sh` + launchd plist). Documented as ops tooling, not a user-facing page.
 
 ---
 
@@ -910,6 +1155,26 @@ When reports are filtered by `person_id`, amounts are allocated proportionally b
 | `GET` | `/api/savings/{id}/snapshots` | UC-074 | List snapshot history for a saving |
 | `POST` | `/api/savings/{id}/snapshots` | UC-075 | Add snapshot to saving |
 | `DELETE` | `/api/savings/{id}/snapshots/{snapshot_id}` | UC-076 | Delete snapshot |
+| `GET` | `/api/beneficiaries` | UC-014 | List beneficiaries |
+| `POST` | `/api/beneficiaries` | UC-015 | Create beneficiary |
+| `PUT` | `/api/beneficiaries/{id}` | UC-016 | Update beneficiary |
+| `DELETE` | `/api/beneficiaries/{id}` | UC-017 | Delete beneficiary |
+| `GET` | `/api/purchases/categorization-rules` | UC-026 | Categorization rules (keyword + learned) |
+| `GET` | `/api/reports/recurring-expenses` | UC-038 | Recurring expenses |
+| `POST` | `/api/import/detect` | UC-055 | Detect card from statement file |
+| `GET` | `/api/import/batches` | UC-056 | List import batches |
+| `GET` | `/api/goals` | UC-080 | List family goals |
+| `POST` | `/api/goals` | UC-081 | Create family goal |
+| `PATCH` | `/api/goals/{id}` | UC-082 | Update family goal |
+| `DELETE` | `/api/goals/{id}` | UC-083 | Delete family goal |
+| `GET` | `/api/savings/total-history` | UC-079 | Savings total history (FX-converted) |
+| `GET` | `/api/savings-exchange-rate` | UC-077 | List savings USD quotes |
+| `POST` | `/api/savings-exchange-rate` | UC-078 | Create savings USD quote |
+| `GET` | `/api/card-statements` | UC-090 | List card statements |
+| `GET` | `/api/card-statements/suggest-month` | UC-091 | Suggest first installment month |
+| `POST` | `/api/card-statements` | UC-092 | Upsert card statement |
+| `DELETE` | `/api/card-statements/{id}` | UC-093 | Delete card statement |
+| `GET` | `/api/backup/db` | UC-100 | Download SQLite backup (Bearer token) |
 
 ---
 
@@ -947,7 +1212,7 @@ These conditions must always hold true. Useful as assertions for future test sui
 2. **INV-002:** Every `PurchasePayer` has a valid `purchase_id` and `person_id`.
 3. **INV-003:** Every `Card.owner_person_id` points to an existing `Person`.
 4. **INV-004:** `ImportedRow.row_fingerprint` is globally unique.
-5. **INV-005:** For any purchase with `installments_total = N`, there exist exactly N `InstallmentSchedule` entries (unless additional installments were added by re-import).
+5. **INV-005:** For any purchase with `installments_total = N`, there exist **at most** N `InstallmentSchedule` entries, and `(purchase_id, installment_index)` is unique (BR-026). A fully-imported purchase has exactly N; a partially re-imported one may have fewer until all monthly statements are imported. The previous wording ("additional installments could be added by re-import") no longer holds — the `ux_installment_purchase_index` UNIQUE index prevents duplicate indices.
 6. **INV-006:** `MonthlyBudget.year_month` is unique — at most one budget per month.
 7. **INV-007:** `Category.name` is unique.
 8. **INV-008:** If `Purchase.payment_method == CARD`, then `Purchase.card_id IS NOT NULL`.
@@ -957,6 +1222,15 @@ These conditions must always hold true. Useful as assertions for future test sui
 12. **INV-012:** When a `Category` is deleted, all formerly-associated `Purchase.category` values become `NULL`.
 13. **INV-013:** All monetary amounts are rounded to 2 decimal places in output.
 14. **INV-014:** The sum of all `difference` values in a transfer calculation equals `balance_delta`, which should be ≤ 0.01 for a balanced month.
+15. **INV-015:** `(InstallmentSchedule.purchase_id, installment_index)` is unique — no purchase has two schedule entries for the same installment index (BR-026).
+16. **INV-016:** `(CardStatement.card_id, year_month)` is unique — at most one statement record per card per month.
+17. **INV-017:** Every `Purchase.import_batch_id`, when set, points to an existing `ImportBatch`.
+
+### Startup Migrations (`db.py`)
+
+Run on every startup, idempotent:
+- `_migrate_add_columns()`: adds `purchase.debtor_id`, `purchase.debt_settled`, `purchase.beneficiary_person_id`, `purchase.import_batch_id` (+ index), and creates the `beneficiary` table if missing. Guarded via `PRAGMA table_info`.
+- `_migrate_dedupe_installments()`: removes duplicate `(purchase_id, installment_index)` rows, then creates `UNIQUE INDEX ux_installment_purchase_index` (BR-026).
 
 ---
 
@@ -1029,3 +1303,24 @@ If no match: defaults to `(1, 1)` (single installment). `total ≤ 0` also defau
 Defined in `main.py`:
 - `IntegrityError` → `409 { detail: "Conflict: duplicate or constraint violation" }`
 - `ValueError` → `400 { detail: str(exc) }`
+
+---
+
+## 14. Automated Processes (outside the HTTP API)
+
+These run independently of the FastAPI app and write to the same SQLite DB.
+
+### AP-001: Gmail → DB Ingestion (Cowork Scheduled Task)
+
+- **Definition:** `.claude/tasks/gmail-gastos-a-db.md` (run by Cowork via the Claude Agent SDK with the Gmail MCP).
+- **What it does:** Reads unread emails (luduenajp@gmail.com), extracts card purchases and bank transfers, and inserts them directly into `data/app.db` as `Purchase` (+ `PurchasePayer` + `InstallmentSchedule`) rows.
+- **Sources:** Santander "Pagaste $X" (card, Pablo), Santander "Tu adicional hizo un consumo" (card, Cintia), Santander/BNA "Aviso de transferencia" and MercadoPago "Tu transferencia fue enviada" (`payment_method=TRANSFER`).
+- **Ignored:** promos, summaries, and transfers where the recipient is Pablo himself (CUIL 20339576786).
+- **De-duplication:** dual mechanism — `data/gmail_processed_ids.json` (per messageId) plus a DB query by date/description/amount.
+- **`first_installment_month`:** card purchases → month **after** purchase date; transfers → **same** month as the transfer date.
+- **Safety:** operates on a temp copy (`/tmp/admin_consumos_work.db`) then copies back, to avoid writes on the FUSE mount.
+- **Schema coupling:** changes to `purchase` / `installmentschedule` / `purchasepayer` must be mirrored in the task's "Schema" section.
+
+### AP-002: Local DB Backup (launchd)
+
+- **Mechanism:** `backup_railway.sh` + a launchd plist call `GET /api/backup/db` (UC-100) with the `BACKUP_TOKEN` bearer and store a timestamped snapshot under `backups/railway/`.
