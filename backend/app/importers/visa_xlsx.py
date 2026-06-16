@@ -92,7 +92,7 @@ def normalize_purchase_description(*, description: str) -> str:
     cleaned = _purchase_desc_leading_code_re.sub("", cleaned)
     cleaned = _purchase_desc_trailing_code_re.sub("", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned
+    return cleaned.lower()
 
 
 def _parse_installments(value: object) -> tuple[int, int]:
@@ -338,7 +338,7 @@ def compute_row_fingerprint(*, provider: str, card_id: int, row: ParsedPurchaseR
         "provider": provider,
         "card_id": card_id,
         "purchase_date": row.purchase_date.isoformat(),
-        "description": row.description,
+        "description": normalize_purchase_description(description=row.description).lower(),
         "currency": row.currency,
         "installment_index": row.installment_index,
         "installments_total": row.installments_total,

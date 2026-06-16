@@ -426,23 +426,22 @@ class TestNormalizeDescription:
     """
 
     def test_backend_strips_installment_marker(self):
-        assert backend_norm(description="TIENDA C. 1/3 EJEMPLO") == "TIENDA EJEMPLO"
+        assert backend_norm(description="TIENDA C. 1/3 EJEMPLO") == "tienda ejemplo"
 
     def test_backend_strips_numeric_installment(self):
-        assert backend_norm(description="TIENDA 2 de 3 EJEMPLO") == "TIENDA EJEMPLO"
+        assert backend_norm(description="TIENDA 2 de 3 EJEMPLO") == "tienda ejemplo"
 
     def test_backend_strips_leading_numeric_code(self):
-        # Leading 3+ digit code is stripped
         result = backend_norm(description="12345 MERPAGO*TIENDA")
-        assert result == "MERPAGO*TIENDA"
+        assert result == "merpago*tienda"
 
     def test_backend_strips_trailing_numeric_code(self):
         result = backend_norm(description="MERPAGO*TIENDA 304823")
-        assert result == "MERPAGO*TIENDA"
+        assert result == "merpago*tienda"
 
     def test_backend_collapses_whitespace(self):
         result = backend_norm(description="TIENDA   EJEMPLO")
-        assert result == "TIENDA EJEMPLO"
+        assert result == "tienda ejemplo"
 
     def test_gmail_norm_matches_backend_norm_for_clean_description(self):
         """
@@ -465,22 +464,8 @@ class TestNormalizeDescription:
         finally:
             sys.path.pop(0)
 
-    def test_case_sensitivity_is_a_known_limitation(self):
-        """
-        normalize_purchase_description does NOT lowercase.
-        As a result, "merpago*tienda" and "MERPAGO*TIENDA" produce different
-        normalized strings and are NOT detected as duplicates by find_duplicate_purchase.
-
-        This is a known limitation: cross-source dedup (gmail lowercase vs PDF uppercase)
-        may miss duplicates unless descriptions are stored in a canonical case.
-
-        TODO: add .lower() to the comparison in find_duplicate_purchase if cross-source
-              dedup is required.
-        """
+    def test_case_insensitive_normalization(self):
+        """normalize_purchase_description lowercases output — cross-source dedup works."""
         lower = backend_norm(description="merpago*tienda")
         upper = backend_norm(description="MERPAGO*TIENDA")
-        # They are NOT equal — case is preserved
-        assert lower != upper, (
-            "If this assertion fails, normalize_purchase_description now lowercases "
-            "and the cross-source dedup limitation has been fixed — update this test."
-        )
+        assert lower == upper == "merpago*tienda"

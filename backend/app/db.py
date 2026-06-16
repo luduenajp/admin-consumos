@@ -25,6 +25,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_columns()
     _migrate_dedupe_installments()
+    _migrate_lowercase_descriptions()
 
 
 def _migrate_add_columns() -> None:
@@ -113,6 +114,17 @@ def _migrate_dedupe_installments() -> None:
             ON installmentschedule(purchase_id, installment_index)
         """))
         conn.commit()
+
+
+def _migrate_lowercase_descriptions() -> None:
+    """Lowercase all purchase descriptions for case-insensitive deduplication (idempotent)."""
+    with engine.connect() as conn:
+        count = conn.execute(
+            text("SELECT COUNT(*) FROM purchase WHERE description != lower(description)")
+        ).scalar()
+        if count:
+            conn.execute(text("UPDATE purchase SET description = lower(description)"))
+            conn.commit()
 
 
 @contextmanager

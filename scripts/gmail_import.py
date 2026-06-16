@@ -127,7 +127,7 @@ def normalize_purchase_description(*, description: str) -> str:
     cleaned = _purchase_desc_leading_code_re.sub("", cleaned)
     cleaned = _purchase_desc_trailing_code_re.sub("", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned
+    return cleaned.lower()
 
 
 def add_months(ym, n):

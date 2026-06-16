@@ -110,15 +110,15 @@ class TestNormalizePurchaseDescription:
 
     def test_removes_leading_code(self):
         result = normalize_purchase_description(description="12345 MERPAGO*TIENDA")
-        assert result == "MERPAGO*TIENDA"
+        assert result == "merpago*tienda"
 
     def test_removes_trailing_code(self):
         result = normalize_purchase_description(description="MERPAGO*TIENDA 12345")
-        assert result == "MERPAGO*TIENDA"
+        assert result == "merpago*tienda"
 
     def test_collapses_spaces(self):
         result = normalize_purchase_description(description="MERPAGO   TIENDA   NUBE")
-        assert result == "MERPAGO TIENDA NUBE"
+        assert result == "merpago tienda nube"
 
     def test_removes_de_pattern(self):
         result = normalize_purchase_description(description="TIENDA 3 de 12 compra")

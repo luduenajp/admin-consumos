@@ -206,6 +206,52 @@ If an existing purchase is found, only the missing `InstallmentSchedule` entry i
 - **`examples/validate_pdf.py`**: Valida formato de PDFs. Uso: \`python validate_pdf.py <archivo.pdf> [contraseña] [--debug]\`
 - **`scripts/smoke_test.sh`**: Pega los endpoints clave de una instancia corriendo y verifica que respondan 200. Uso: `./scripts/smoke_test.sh` (default `http://localhost:8000`); `BASE_URL=...` para apuntar a prod; `APP_USERNAME=... APP_PASSWORD=...` si tiene Basic Auth.
 
+## Deploy en Railway
+
+La app corre en Railway en el servicio `admin-consumos` (proyecto `graceful-rebirth`).
+
+| Dato | Valor |
+|---|---|
+| URL producción | `https://admin-consumos-production.up.railway.app` |
+| DB en container | `/data/app.db` (volume `admin-consumos-volume`, 500 MB) |
+| Variable de entorno | `DB_PATH=/data/app.db` |
+
+### Comandos útiles
+
+```bash
+railway status                        # Ver estado del servicio
+railway logs                          # Ver logs del deploy/runtime
+railway redeploy                      # Redesplegar sin rebuild (aplica cambios de config)
+railway restart                       # Reiniciar sin redesplegar
+```
+
+### Ejecutar comandos en el container (SSH)
+
+```bash
+# Shell interactivo en el container
+railway ssh
+
+# Comando puntual (ej: consultar la DB de prod)
+railway ssh -- sqlite3 /data/app.db "SELECT COUNT(*) FROM purchase;"
+
+# Aplicar un UPDATE manual en prod
+railway ssh -- sqlite3 /data/app.db "UPDATE purchase SET description = lower(description);"
+```
+
+> `railway run <cmd>` corre el comando **localmente** con las env vars de Railway inyectadas — no en el container. Para ejecutar en prod usar `railway ssh -- <cmd>`.
+
+### Migraciones de DB
+
+Las migraciones se implementan como funciones en `db.py:init_db()` (patrón `_migrate_*`). Se ejecutan automáticamente en cada deploy al arrancar el backend. Son idempotentes — siempre se puede redesplegar sin riesgo.
+
+### Backup de la DB de prod
+
+```bash
+./backup_railway.sh   # Descarga /data/app.db vía /api/backup/db y guarda en backups/railway/
+```
+
+Requiere `~/.adminconsumos-backup.env` con `RAILWAY_APP_URL` y `BACKUP_TOKEN`. Rota automáticamente, guarda hasta 30 backups.
+
 ## Red de seguridad (hooks)
 
 - **Hook `pre-push`** (`.githooks/pre-push`): antes de cada `git push` corre la suite completa — `pytest` (backend) + `vitest` (frontend) + `npm run build` (TypeScript + Vite). Bloquea el push si algo falla.
