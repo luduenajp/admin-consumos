@@ -754,6 +754,9 @@ export function PurchasesPage() {
                       )}
                       <span className="purchaseChip purchaseChipNeutral">{payerName}</span>
                       {cardName && <span className="purchaseChip purchaseChipNeutral">{cardName}</span>}
+                      {p.currency === 'USD' && (
+                        <span className="purchaseChip purchaseChipInstallment">USD</span>
+                      )}
                       {p.installments_total > 1 && (
                         <span className="purchaseChip purchaseChipInstallment">
                           {p.installments_total} cuotas
