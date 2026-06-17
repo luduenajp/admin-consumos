@@ -587,6 +587,7 @@ export function SavingsPage() {
           <div className="muted">Sin inversiones registradas. Creá una abajo.</div>
         )}
         {savings.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
@@ -668,6 +669,7 @@ export function SavingsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

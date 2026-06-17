@@ -20,12 +20,14 @@ const NuevaTransferenciaPage = lazy(() =>
   import('./pages/nueva-transferencia-page').then((m) => ({ default: m.NuevaTransferenciaPage })),
 )
 
-const NAV_GROUPS = [
+type NavItem = { to: string; label: string; icon: string; end?: boolean; mobileHide?: boolean }
+
+const NAV_GROUPS: { label: string; secondary: boolean; items: NavItem[] }[] = [
   {
     label: 'Principal',
     secondary: false,
     items: [
-      { to: '/', label: 'Dashboard', icon: '📊', end: true as const },
+      { to: '/', label: 'Dashboard', icon: '📊', end: true },
       { to: '/gastos-categorias', label: 'Categorías', icon: '📊' },
       { to: '/import', label: 'Importar', icon: '📥' },
       { to: '/admin', label: 'Admin', icon: '⚙️' },
@@ -35,7 +37,7 @@ const NAV_GROUPS = [
     label: 'Más',
     secondary: true,
     items: [
-      { to: '/budget', label: 'Presupuesto', icon: '💰' },
+      { to: '/budget', label: 'Presupuesto', icon: '💰', mobileHide: true },
       { to: '/ahorros', label: 'Ahorros', icon: '🐖' },
       { to: '/categories', label: 'Categorías', icon: '🏷️' },
       { to: '/goals', label: 'Objetivos', icon: '🎯' },
@@ -91,7 +93,7 @@ function App() {
               {NAV_GROUPS.map((group) => (
                 <div key={group.label} className="mobileMenuGroup">
                   <div className="mobileMenuGroupLabel">{group.label}</div>
-                  {group.items.map((item) => (
+                  {group.items.filter((item) => !item.mobileHide).map((item) => (
                     <NavLink
                       key={item.to}
                       className={({ isActive }) =>
