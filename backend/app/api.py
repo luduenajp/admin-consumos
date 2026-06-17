@@ -338,6 +338,11 @@ def post_purchase(payload: PurchaseCreate) -> PurchaseRead:
         if purchase.id is None:
             raise HTTPException(status_code=500, detail="Failed to create purchase")
 
+        if not purchase.category:
+            auto_categorize_purchases(session=session)
+            session.commit()
+            session.refresh(purchase)
+
         return _purchase_to_read(purchase, _fetch_payers(session, purchase.id))
 
 
