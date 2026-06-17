@@ -26,6 +26,8 @@ def init_db() -> None:
     _migrate_add_columns()
     _migrate_dedupe_installments()
     _migrate_lowercase_descriptions()
+    _migrate_uppercase_categories()
+    _migrate_reorganize_categories()
 
 
 def _migrate_add_columns() -> None:
@@ -125,6 +127,76 @@ def _migrate_lowercase_descriptions() -> None:
         if count:
             conn.execute(text("UPDATE purchase SET description = lower(description)"))
             conn.commit()
+
+
+def _migrate_uppercase_categories() -> None:
+    """Convert all category names to uppercase using Python (handles accented chars). Idempotent."""
+    with engine.connect() as conn:
+        cats = conn.execute(text("SELECT id, name FROM category")).fetchall()
+        for cat_id, name in cats:
+            upper = name.upper()
+            if upper != name:
+                conn.execute(text("UPDATE category SET name = :name WHERE id = :id"), {"name": upper, "id": cat_id})
+
+        purchases = conn.execute(text("SELECT id, category FROM purchase WHERE category IS NOT NULL")).fetchall()
+        for p_id, cat in purchases:
+            upper = cat.upper()
+            if upper != cat:
+                conn.execute(text("UPDATE purchase SET category = :cat WHERE id = :id"), {"cat": upper, "id": p_id})
+
+        conn.commit()
+
+
+def _migrate_reorganize_categories() -> None:
+    """Reorganize categories: split SERVICIOS, remove VARIOS, add new ones. Idempotent."""
+    NEW_CATEGORIES = [
+        ("FIAMBRERÍA", "#8B4513"),
+        ("KIOSCO", "#DAA520"),
+        ("GASTRONOMÍA", "#E07B39"),
+        ("SERVICIOS PÚBLICOS", "#4A90D9"),
+        ("TELEFONÍA", "#7B68EE"),
+        ("INTERNET", "#20B2AA"),
+        ("SUSCRIPCIONES", "#9370DB"),
+        ("INDUMENTARIA", "#DB7093"),
+        ("VIAJES", "#32CD32"),
+        ("GASTOS PERSONALES", "#A0A0A0"),
+        ("NO DEFINIDO", "#808080"),
+    ]
+    RENAME = {"RESTAURANTES": "GASTRONOMÍA"}
+    RESET_AND_DELETE = {"VARIOS", "SERVICIOS", "ADELANTO DE SUELDO"}
+
+    with engine.connect() as conn:
+        existing = {row[0] for row in conn.execute(text("SELECT name FROM category")).fetchall()}
+
+        # Skip entirely if already reorganized (all new cats exist and old ones are gone)
+        already_done = all(name in existing for name, _ in NEW_CATEGORIES) and not existing.intersection(RESET_AND_DELETE | set(RENAME.keys()))
+        if already_done:
+            return
+
+        for name, color in NEW_CATEGORIES:
+            if name not in existing:
+                conn.execute(text("INSERT INTO category (name, color) VALUES (:name, :color)"), {"name": name, "color": color})
+        conn.commit()
+
+        # Rename RESTAURANTES → GASTRONOMÍA
+        for old, new in RENAME.items():
+            if old in existing:
+                conn.execute(text("UPDATE purchase SET category = :new WHERE category = :old"), {"new": new, "old": old})
+                conn.execute(text("DELETE FROM category WHERE name = :name"), {"name": old})
+        conn.commit()
+
+        # Reset obsolete categories to NULL so auto_categorize can re-assign
+        for cat in RESET_AND_DELETE:
+            if cat in existing:
+                conn.execute(text("UPDATE purchase SET category = NULL WHERE category = :cat"), {"cat": cat})
+                conn.execute(text("DELETE FROM category WHERE name = :name"), {"name": cat})
+        conn.commit()
+
+    # Run auto_categorize to re-assign purchases that were reset to NULL
+    from app.crud import auto_categorize_purchases
+    with Session(engine) as session:
+        auto_categorize_purchases(session=session)
+        session.commit()
 
 
 @contextmanager

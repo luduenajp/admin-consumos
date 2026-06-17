@@ -24,7 +24,7 @@ class TestCategoryCRUD:
     def test_create_and_list(self, session):
         cat = create_category(session=session, payload=CategoryCreate(name="supermercado", color="#ff0000"))
         assert cat.id is not None
-        assert cat.name == "supermercado"
+        assert cat.name == "SUPERMERCADO"
 
         categories = list_categories(session=session)
         assert len(categories) == 1
@@ -41,7 +41,7 @@ class TestCategoryCRUD:
                 description="Pizza",
                 currency=CurrencyCode.ARS,
                 amount_original=5000,
-                category="comida",
+                category="COMIDA",
             ),
         )
 
@@ -49,12 +49,12 @@ class TestCategoryCRUD:
             session=session, category_id=cat.id, payload=CategoryUpdate(name="restaurantes")
         )
 
-        purchases = list(session.exec(select(Purchase).where(Purchase.category == "restaurantes")))
+        purchases = list(session.exec(select(Purchase).where(Purchase.category == "RESTAURANTES")))
         assert len(purchases) == 1
         assert purchases[0].description == "pizza"
 
         # Old category name should not exist
-        old = list(session.exec(select(Purchase).where(Purchase.category == "comida")))
+        old = list(session.exec(select(Purchase).where(Purchase.category == "COMIDA")))
         assert len(old) == 0
 
     def test_delete_nullifies_purchases(self, session, two_person_scenario):
@@ -69,7 +69,7 @@ class TestCategoryCRUD:
                 description="Temp purchase",
                 currency=CurrencyCode.ARS,
                 amount_original=3000,
-                category="temporal",
+                category="TEMPORAL",
             ),
         )
 
@@ -111,8 +111,8 @@ class TestAutoCategorizePurchases:
 
         purchases = list(session.exec(select(Purchase).order_by(Purchase.description)))
         categories = {p.description: p.category for p in purchases}
-        assert categories["coto digital"] == "Supermercado"
-        assert categories["netflix"] == "Servicios"
+        assert categories["coto digital"] == "SUPERMERCADO"
+        assert categories["netflix"] == "SUSCRIPCIONES"
 
     def test_already_categorized_not_touched(self, session, two_person_scenario):
         s = two_person_scenario

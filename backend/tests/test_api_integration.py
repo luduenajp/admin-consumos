@@ -129,10 +129,11 @@ class TestPurchasesEndpoints:
 
 class TestCategoriesEndpoints:
     def test_create_and_list(self, client):
-        r = client.post("/api/categories", json={"name": "supermercado", "color": "#ff0000"})
+        r = client.post("/api/categories", json={"name": "test-unico", "color": "#ff0000"})
         assert r.status_code == 200
         r2 = client.get("/api/categories")
-        assert len(r2.json()) == 1
+        names = [c["name"] for c in r2.json()]
+        assert "TEST-UNICO" in names
 
     def test_duplicate_category_returns_error(self, client):
         client.post("/api/categories", json={"name": "food"})
@@ -144,7 +145,7 @@ class TestCategoriesEndpoints:
         cat = client.post("/api/categories", json={"name": "vieja"}).json()
         r = client.patch(f"/api/categories/{cat['id']}", json={"name": "nueva"})
         assert r.status_code == 200
-        assert r.json()["name"] == "nueva"
+        assert r.json()["name"] == "NUEVA"
 
     def test_delete_category(self, client):
         cat = client.post("/api/categories", json={"name": "temporal"}).json()
