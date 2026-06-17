@@ -82,8 +82,8 @@ function PeopleSection() {
         </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
-          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="formRow" style={{ flex: 1, minWidth: '180px', marginBottom: 0 }}>
             <label className="label">Nuevo Nombre</label>
             <input
               className="input"
@@ -456,8 +456,8 @@ function DebtorsSection() {
         </>
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
-          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="formRow" style={{ flex: 1, minWidth: '180px', marginBottom: 0 }}>
             <label className="label">Nombre del Deudor</label>
             <input
               className="input"
@@ -622,7 +622,7 @@ function BeneficiariesSection() {
       )}
       <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+          <div className="formRow" style={{ flex: '2 1 160px', marginBottom: 0 }}>
             <label className="label">Nombre *</label>
             <input
               className="input"
@@ -633,21 +633,21 @@ function BeneficiariesSection() {
             />
             {newNameError && <span className="fieldError">{newNameError}</span>}
           </div>
-          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+          <div className="formRow" style={{ flex: '2 1 140px', marginBottom: 0 }}>
             <label className="label">CBU</label>
             <input className="input" value={newCbu} onChange={e => setNewCbu(e.target.value)} placeholder="22 dígitos" />
           </div>
-          <div className="formRow" style={{ flex: 1, marginBottom: 0 }}>
+          <div className="formRow" style={{ flex: '1 1 120px', marginBottom: 0 }}>
             <label className="label">CUIT</label>
             <input className="input" value={newCuit} onChange={e => setNewCuit(e.target.value)} placeholder="XX-XXXXXXXX-X" />
           </div>
-          <div className="formRow" style={{ flex: 2, marginBottom: 0 }}>
+          <div className="formRow" style={{ flex: '2 1 140px', marginBottom: 0 }}>
             <label className="label">Alias</label>
             <input className="input" value={newAlias} onChange={e => setNewAlias(e.target.value)} placeholder="ej: verduleria.lopez" />
           </div>
           <button
             className="button"
-            style={{ height: '42px' }}
+            style={{ height: '42px', flexShrink: 0 }}
             disabled={createMutation.isPending}
             onClick={() => {
               if (!newName.trim()) {
@@ -838,7 +838,7 @@ export function AdminPage() {
     <section className="page">
       <h2 className="pageTitle">Administración del Sistema</h2>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(500px, 100%), 1fr))', gap: '32px' }}>
         <PeopleSection />
         <CardsSection />
         <CardStatementsSection />
