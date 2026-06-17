@@ -13,6 +13,9 @@ const BudgetPage = lazy(() => import('./pages/budget-page').then((m) => ({ defau
 const CategoriesPage = lazy(() => import('./pages/categories-page').then((m) => ({ default: m.CategoriesPage })))
 const GoalsPage = lazy(() => import('./pages/goals-page').then((m) => ({ default: m.GoalsPage })))
 const SavingsPage = lazy(() => import('./pages/savings-page').then((m) => ({ default: m.SavingsPage })))
+const GastosCategoriaPage = lazy(() =>
+  import('./pages/gastos-categorias-page').then((m) => ({ default: m.GastosCategoriaPage })),
+)
 const NuevaTransferenciaPage = lazy(() =>
   import('./pages/nueva-transferencia-page').then((m) => ({ default: m.NuevaTransferenciaPage })),
 )
@@ -23,7 +26,7 @@ const NAV_GROUPS = [
     secondary: false,
     items: [
       { to: '/', label: 'Dashboard', icon: '📊', end: true as const },
-      { to: '/purchases', label: 'Compras', icon: '🧾' },
+      { to: '/gastos-categorias', label: 'Categorías', icon: '📊' },
       { to: '/import', label: 'Importar', icon: '📥' },
       { to: '/admin', label: 'Admin', icon: '⚙️' },
     ],
@@ -116,6 +119,7 @@ function App() {
           <Suspense fallback={<div className="muted" style={{ padding: '2rem' }}>Cargando…</div>}>
             <Routes>
               <Route element={<DashboardPage />} path="/" />
+              <Route element={<GastosCategoriaPage />} path="/gastos-categorias" />
               <Route element={<PurchasesPage />} path="/purchases" />
               <Route element={<ImportPage />} path="/import" />
               <Route element={<BudgetPage />} path="/budget" />
