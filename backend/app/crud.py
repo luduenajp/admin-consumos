@@ -838,7 +838,7 @@ def report_spending_by_category(
     # Aggregate by category
     totals: dict[str, float] = {}
     for sch, category in results:
-        cat_key = category or "Sin categoría"
+        cat_key = category or "SIN CATEGORÍA"
         amount_original = float(sch.amount_original)
 
         # Convert to ARS
@@ -1422,7 +1422,7 @@ def delete_debt_transfer(*, session: Session, transfer_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 def create_category(*, session: Session, payload: CategoryCreate) -> Category:
-    category = Category(name=payload.name, color=payload.color)
+    category = Category(name=payload.name.upper(), color=payload.color)
     session.add(category)
     session.commit()
     session.refresh(category)
@@ -1440,16 +1440,17 @@ def update_category(*, session: Session, category_id: int, payload: CategoryUpda
 
     old_name = category.name
     new_data = payload.model_dump(exclude_unset=True)
-    
+    new_name = new_data["name"].upper() if "name" in new_data else None
+
     for field, value in new_data.items():
-        setattr(category, field, value)
-    
+        setattr(category, field, value.upper() if field == "name" else value)
+
     # If name changed, update all purchases with the old name
-    if "name" in new_data and new_data["name"] != old_name:
+    if new_name is not None and new_name != old_name:
         stmt = select(Purchase).where(Purchase.category == old_name)
         purchases = session.exec(stmt).all()
         for p in purchases:
-            p.category = new_data["name"]
+            p.category = new_name
             session.add(p)
             
     session.add(category)
@@ -1575,27 +1576,49 @@ _INSTALLMENT_RE = _re.compile(r'C\.\d+/\d+|\b\d+ de \d+\b', _re.IGNORECASE)
 _TRAILING_CODE_RE = _re.compile(r'\s+[A-Z0-9]{3,}\s*$')
 
 # Categories that are too generic to learn patterns from (avoid polluting the map)
-_SKIP_LEARNING_CATS = {"OTROS - VARIOS", "Sin categoría"}
+_SKIP_LEARNING_CATS = {"OTROS - VARIOS", "SIN CATEGORÍA", "NO DEFINIDO", "GASTOS PERSONALES"}
 
 # Keyword rules mapped to actual category names used in the DB
 _KEYWORD_RULES: list[tuple[str, list[str]]] = [
-    ("Supermercado", ["COTO", "CARREFOUR", "JUMBO", "DISCO", "VEA", "DIA ", "LA ANONIMA", "WALMART", "LIBERTAD", "MASONLINE", "HIPERMERCADO", "CHANGOMAS", "MAKRO"]),
-    ("Combustible", ["YPF", "SHELL", "AXION", "PETROBRAS", "PUMA ENERGY", "SHELLBOX"]),
-    ("Servicios", ["AYSA", "EDESUR", "EDENOR", "METROGAS", "EPEC", "CLARO", "MOVISTAR", "PERSONAL FLOW", "CABLEVISION", "TELECENTRO", "NETFLIX", "SPOTIFY", "DISNEY", "OPENAI", "CHATGPT", "GOOGLE ", "YOUTUBE", "PAGOS360", "ADT SECURITY", "PAGO TIC"]),
-    ("Peaje", ["CAMINOS DE LAS", "TELEPEAJE", "AUTOPISTA", "PEAJE"]),
-    ("Seguros", ["SEGUROS", "CHUBB", "SMG CIA", "BINA SEGUROS", "FEDERACION PATRONAL"]),
-    ("Mascotas", ["VETERINARIA", "PETSHOP", "PET SHOP", "VETERINARIO"]),
-    ("Impuestos", ["AFIP", "ARBA", "AGIP", "RENTAS", "IMPUESTO", "CORDOBA.GOB.AR", "ANSES", "SENASA"]),
-    ("Préstamos", ["PRESTAMO", "CUOTA PRESTAMO"]),
-    ("Autos", ["NEUMATICOS", "GOMERIA", "LUBRICENTRO", "TALLER MECANICO", "AUTOMOTORES", "REPUESTO"]),
-    ("Verdulería", ["VERDULERIA", "FRUTERIA", "FRUTAS Y VERDURAS"]),
-    ("Carnicería", ["CARNICERIA", "CARNES", "FRIGORIFICO", "FRIGORÍFICO"]),
-    ("Regalos", ["TOY STORE", "JUGUETERIA", "JUGUETES"]),
-    ("Transporte", ["SUBE", "UBER", "CABIFY", "DIDI", "RAPPI", "PEDIDOSYA"]),
-    ("Salud", ["OSDE", "SWISS MEDICAL", "FARMACIA", "LABORATORIO", "MEDICO", "CLINICA"]),
-    ("Educación", ["COLEGIO", "UNIVERSIDAD", "LIBRERIA", "CUOTA COLEGIO"]),
-    ("Entretenimiento", ["CINEMA", "TEATRO", "CINE", "BOLICHE", "PARQUE"]),
-    ("Hogar", ["EASY", "SODIMAC", "FERRETERIA", "BLANQUERIA", "IKEA"]),
+    # Alimentación
+    ("SUPERMERCADO", ["COTO", "CARREFOUR", "JUMBO", "DISCO", "VEA", "DIA ", "LA ANONIMA", "WALMART", "LIBERTAD", "MASONLINE", "HIPERMERCADO", "CHANGOMAS", "MAKRO", "ALMACOR"]),
+    ("VERDULERÍA", ["VERDULERIA", "FRUTERIA", "FRUTAS Y VERDURAS"]),
+    ("CARNICERÍA", ["CARNICERIA", "CARNES", "FRIGORIFICO", "FRIGORÍFICO", "POLLERIA", "POLLERÍA"]),
+    ("FIAMBRERÍA", ["FIAMBRERIA", "FIAMBRERÍA", "FIAMBRE"]),
+    ("KIOSCO", ["KIOSCO", "KIOSKOS", "KIOSKOSERCH", "FRATELLICOR"]),
+    ("GASTRONOMÍA", ["PIZZA", "PIZZERIA", "PIZZERÍA", "LOMITO", "LOMITERIA", "MCDONALD", "BURGER", "HAMBURGUESERIA", "FASTA", "PANADERIA", "HELADERIA", "SANDWICHERIA", "SUSHI", "RESTAURANT", "RAPPI", "PEDIDOSYA", "PANINO", "SANGRIA", "SANTINO", "LACUARTA", "LA CUARTA"]),
+    # Servicios
+    ("SERVICIOS PÚBLICOS", ["EPEC", "EDESUR", "EDENOR", "AYSA", "METROGAS", "ECOGAS", "AGUASCORDOBESAS", "AGUAS CORDOBESAS", "PAGO TIC"]),
+    ("TELEFONÍA", ["CP*FACTURAS CLARO", "CP*FACTURAS MOVISTAR", "CP*FACTURAS PERSONAL", "MERPAGO*PERSONAL", "CLARO ", "MOVISTAR", "PERSONAL"]),
+    ("INTERNET", ["CABLEVISION", "TELECENTRO", "FIBERTEL", "PERSONAL FLOW"]),
+    ("SUSCRIPCIONES", ["NETFLIX", "SPOTIFY", "DISNEY", "OPENAI", "CHATGPT", "YOUTUBE", "CLAUDE.AI", "AMAZON PRIME", "HBO", "PARAMOUNT", "MUBI", "GOOGLE *YOUTUBE", "GASTONFARIASBOUVI", "GASTON FARIAS"]),
+    # Transporte y movilidad
+    ("COMBUSTIBLE", ["YPF", "SHELL", "AXION", "PETROBRAS", "PUMA ENERGY", "SHELLBOX"]),
+    ("PEAJE", ["CAMINOS DE LAS", "TELEPEAJE", "AUTOPISTA", "PEAJE"]),
+    ("TRANSPORTE", ["SUBE", "UBER", "CABIFY", "DIDI", "PAYU*AR*UBER", "GO PARK", "GOPARK", "PARKING", "ESTACIONAMIENTO"]),
+    # Seguros, finanzas e impuestos
+    ("SEGUROS", ["SEGUROS", "CHUBB", "SMG CIA", "BINA SEGUROS", "FEDERACION PATRONAL", "ADT SECURITY", "ADT "]),
+    ("PRÉSTAMOS", ["PRESTAMO", "CUOTA PRESTAMO", "RESTA DE ADELANTO"]),
+    ("IMPUESTOS", ["AFIP", "ARBA", "AGIP", "RENTAS", "IMPUESTO", "CORDOBA.GOB.AR", "ANSES", "SENASA"]),
+    # Compras
+    ("INDUMENTARIA", ["GRIMOLDI", "CALZADOS", "ZAPATILLAS", "JEANS", "MEXX", "ZARA", "OXFORD", "RIFLE", "AF JEANS", "PARFUMERIE", "GIOCONDA", "TIENDAS RAMA", "MODAS", "DELLOREAN", "PATAGONIATRES", "PATAGONIA", "MONTELLA", "MERIDIANO", "VALENTINA", "MONIMAR", "OASIS"]),
+    ("HOGAR", ["EASY", "SODIMAC", "FERRETERIA", "BLANQUERIA", "IKEA", "PINTURERIAS", "PINTEGRA", "CETROGAR", "FERYMARBOMBAS", "TODOFERSA", "ELECTRO", "TECNOCRAFT", "MERPAGO*MELI", "MERCADOLIBRE", "MERPAGO*5PRODUCTOS", "MERPAGO*8PRODUCTOS", "IMBACK"]),
+    ("AUTOS", ["NEUMATICOS", "GOMERIA", "LUBRICENTRO", "TALLER MECANICO", "AUTOMOTORES", "REPUESTO", "VOLKSWAGEN"]),
+    # Salud
+    ("SALUD", ["OSDE", "SWISS MEDICAL", "FARMACIA", "LABORATORIO", "MEDICO", "CLINICA", "DENTISTA", "ODONTOLOG", "RED SALUD", "HP FARMA", "BEAUTY SHOP", "ESPACIO SET", "SANCHEZ ANTONIOLLI"]),
+    # Educación
+    ("EDUCACIÓN", ["COLEGIO", "UNIVERSIDAD", "LIBRERIA", "CUOTA COLEGIO", "FUND PARA LA ACCION ED"]),
+    # Ocio y viajes
+    ("ENTRETENIMIENTO", ["CINEMA", "TEATRO", "CINE", "BOLICHE", "PARQUE", "AUTOENTRADA", "TUENTRADA", "ENTRADAS", "PLAZA DE LA MUSICA", "VISA EDEN", "QUALITY EVENTOS", "JUKEBOX", "PARDO PRODUCCIONES", "EVENTOS", "CLUBDECAMPO", "CLUB DE CAMPO", "NUEVOCENTRO SHOPPING", "NUEVOCENTRO"]),
+    ("VIAJES", ["AEROLINEAS", "AEROLÍNEAS", "LATAM", "PLATAFORMA 10", "FLYBONDI", "PASAJESENBUS", "PASAJES EN BUS", "BOLETERIAS", "AEROLINEA"]),
+    # Mascotas
+    ("MASCOTAS", ["VETERINARIA", "PETSHOP", "PET SHOP", "VETERINARIO", "GOLDEN PETS", "PETS", "PROSHOP", "ETERCOR"]),
+    # Regalos
+    ("REGALOS", ["TOY STORE", "JUGUETERIA", "JUGUETES", "MARINA BOU", "DLO*MARINA"]),
+    # Niños
+    ("NIÑOS", ["GABRIELA SASSAROLI", "SASSAROLI", "CHK PASEO DEL JOCKEY", "PASEO DEL JOCKEY"]),
+    # Gastos personales
+    ("GASTOS PERSONALES", ["NANCY BEATRIZ VIDELA", "NANCY VIDELA"]),
 ]
 
 
@@ -1626,7 +1649,7 @@ def _build_inference_maps(session: Session) -> tuple[dict[str, str], dict[str, s
     all_categorized = session.exec(
         select(Purchase).where(
             (Purchase.category != None)
-            & (Purchase.category != "Sin categoría")
+            & (Purchase.category != "SIN CATEGORÍA")
         )
     ).all()
 
@@ -1660,7 +1683,7 @@ def auto_categorize_purchases(*, session: Session) -> int:
 
     uncategorized = session.exec(
         select(Purchase).where(
-            (Purchase.category == None) | (Purchase.category == "Sin categoría")
+            (Purchase.category == None) | (Purchase.category == "SIN CATEGORÍA")
         )
     ).all()
 
@@ -1708,7 +1731,7 @@ def get_categorization_rules(*, session: Session) -> dict:
     # Enrich CUIL rules with occurrence counts
     all_categorized = session.exec(
         select(Purchase).where(
-            (Purchase.category != None) & (Purchase.category != "Sin categoría")
+            (Purchase.category != None) & (Purchase.category != "SIN CATEGORÍA")
         )
     ).all()
 
