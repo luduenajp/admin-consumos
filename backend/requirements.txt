@@ -11,6 +11,8 @@ python-multipart>=0.0.20
 uvicorn>=0.34
 python-dateutil>=2.9
 anthropic>=0.40
+pytesseract>=0.3.13
+Pillow>=11.0
 
 # Testing
 pytest>=8.0
