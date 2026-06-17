@@ -260,6 +260,7 @@ interface GoalTableProps {
 
 function GoalTable({ goals, editingId, editForm, onEditFormChange, onStartEdit, onSaveEdit, onCancelEdit, onToggleComplete, onDelete, emptyText, dimmed }: GoalTableProps) {
     return (
+        <div style={{ overflowX: 'auto' }}>
         <table className="table">
             <thead>
                 <tr>
@@ -395,5 +396,6 @@ function GoalTable({ goals, editingId, editForm, onEditFormChange, onStartEdit, 
                 )}
             </tbody>
         </table>
+        </div>
     )
 }
