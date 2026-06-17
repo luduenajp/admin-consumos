@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.config import get_anthropic_api_key
 from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches, match_beneficiary
+from app.importers.comprobante_local import extract_from_image, extract_from_pdf
 from app.db import get_session
 from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
 from app.schemas import GSheetsImportRequest, ImportBatchRead, PurchaseCreate
@@ -445,7 +446,6 @@ def import_gsheets_endpoint(payload: GSheetsImportRequest) -> dict:
 
 @router.post("/import/comprobante")
 async def post_comprobante(file: UploadFile = File(...)) -> dict:
-    # Validate file type
     content_type = file.content_type or ""
     if content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
@@ -453,104 +453,82 @@ async def post_comprobante(file: UploadFile = File(...)) -> dict:
             detail=f"Tipo de archivo no soportado: {content_type}. Use imagen o PDF."
         )
 
-    # Check API key
-    api_key = get_anthropic_api_key()
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="ANTHROPIC_API_KEY no configurada. Configurá la variable de entorno."
-        )
-
-    # Read file bytes
     file_bytes = await file.read()
-    file_b64 = base64.b64encode(file_bytes).decode()
 
-    # Determine media type for Claude
-    media_type = content_type  # e.g. "image/png" or "application/pdf"
+    nombre = cbu = cuit = alias = None
+    monto = fecha = None
+    moneda = "ARS"
+    extraction_source = "empty"
 
-    # Call Claude Vision API
-    try:
-        import anthropic as anthropic_sdk
-        client = anthropic_sdk.Anthropic(api_key=api_key)
+    # --- Intentar Claude Vision ---
+    api_key = get_anthropic_api_key()
+    claude_ok = False
+    if api_key:
+        try:
+            import anthropic as anthropic_sdk
+            client = anthropic_sdk.Anthropic(api_key=api_key)
+            file_b64 = base64.b64encode(file_bytes).decode()
 
-        if media_type == "application/pdf":
-            source = {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": file_b64,
-            }
-            content_block = {"type": "document", "source": source}
-        else:
-            source = {
-                "type": "base64",
-                "media_type": media_type,
-                "data": file_b64,
-            }
-            content_block = {"type": "image", "source": source}
+            if content_type == "application/pdf":
+                content_block = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_b64}}
+            else:
+                content_block = {"type": "image", "source": {"type": "base64", "media_type": content_type, "data": file_b64}}
 
-        message = client.messages.create(
-            model="claude-opus-4-8",
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        content_block,
-                        {"type": "text", "text": EXTRACTION_PROMPT},
-                    ],
-                }
-            ],
-        )
-        raw_text = message.content[0].text
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Error al llamar a Claude API: {str(e)}"
-        )
+            message = client.messages.create(
+                model="claude-opus-4-8",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": [content_block, {"type": "text", "text": EXTRACTION_PROMPT}]}],
+            )
+            raw_text = message.content[0].text
+            extracted = json.loads(raw_text.strip())
+            destinatario = extracted.get("destinatario") or {}
+            nombre = destinatario.get("nombre")
+            cbu = destinatario.get("cbu")
+            cuit = destinatario.get("cuit")
+            alias = destinatario.get("alias")
+            monto = extracted.get("monto")
+            fecha = extracted.get("fecha")
+            moneda = extracted.get("moneda", "ARS")
+            claude_ok = True
+            extraction_source = "claude"
+        except Exception:
+            pass  # fall through to local extraction
 
-    # Parse JSON response
-    try:
-        extracted = json.loads(raw_text.strip())
-    except (json.JSONDecodeError, ValueError):
-        raise HTTPException(
-            status_code=502,
-            detail=f"Respuesta de Claude no es JSON válido: {raw_text[:200]}"
-        )
+    # --- Fallback: extracción local ---
+    if not claude_ok:
+        try:
+            if content_type == "application/pdf":
+                local = extract_from_pdf(file_bytes)
+            else:
+                local = extract_from_image(file_bytes)
+            monto = local.monto
+            fecha = local.fecha
+            moneda = local.moneda
+            nombre = local.nombre
+            cbu = local.cbu
+            cuit = local.cuit
+            alias = local.alias
+            if any(v is not None for v in [monto, fecha, nombre, cbu]):
+                extraction_source = "local"
+        except Exception:
+            pass
 
-    destinatario = extracted.get("destinatario") or {}
-    nombre = destinatario.get("nombre")
-    cbu = destinatario.get("cbu")
-    cuit = destinatario.get("cuit")
-    alias = destinatario.get("alias")
-
-    # Match beneficiary
+    # --- Match beneficiary ---
     matched = None
     with get_session() as session:
-        result = match_beneficiary(
-            session=session,
-            name=nombre,
-            cbu=cbu,
-            cuit=cuit,
-            alias=alias,
-        )
+        result = match_beneficiary(session=session, name=nombre, cbu=cbu, cuit=cuit, alias=alias)
         if result:
             b, confidence = result
             matched = {"id": b.id, "name": b.name, "confidence": confidence}
 
     return {
-        "amount": extracted.get("monto"),
-        "date": extracted.get("fecha"),
-        "currency": extracted.get("moneda", "ARS"),
-        "description": nombre,
+        "amount": monto,
+        "date": fecha,
+        "currency": moneda,
+        "description": matched["name"] if matched else nombre,
         "matched_beneficiary": matched,
-        "raw_extracted": {
-            "nombre": nombre,
-            "cbu": cbu,
-            "cuit": cuit,
-            "alias": alias,
-        },
+        "extraction_source": extraction_source,
+        "raw_extracted": {"nombre": nombre, "cbu": cbu, "cuit": cuit, "alias": alias},
     }
 
 
