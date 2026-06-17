@@ -51,7 +51,7 @@ class TestCategoryCRUD:
 
         purchases = list(session.exec(select(Purchase).where(Purchase.category == "restaurantes")))
         assert len(purchases) == 1
-        assert purchases[0].description == "Pizza"
+        assert purchases[0].description == "pizza"
 
         # Old category name should not exist
         old = list(session.exec(select(Purchase).where(Purchase.category == "comida")))
@@ -111,8 +111,8 @@ class TestAutoCategorizePurchases:
 
         purchases = list(session.exec(select(Purchase).order_by(Purchase.description)))
         categories = {p.description: p.category for p in purchases}
-        assert categories["COTO DIGITAL"] == "Supermercado"
-        assert categories["NETFLIX"] == "Servicios"
+        assert categories["coto digital"] == "Supermercado"
+        assert categories["netflix"] == "Servicios"
 
     def test_already_categorized_not_touched(self, session, two_person_scenario):
         s = two_person_scenario

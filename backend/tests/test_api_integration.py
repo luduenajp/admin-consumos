@@ -73,7 +73,7 @@ class TestPurchasesEndpoints:
         )
         assert r.status_code == 200
         data = r.json()
-        assert data["description"] == "Test Purchase"
+        assert data["description"] == "test purchase"
 
     def test_create_purchase_invalid_card_returns_400(self, client):
         r = client.post(

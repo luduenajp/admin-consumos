@@ -376,7 +376,7 @@ class TestBR002FxMissingSkip:
         # Solo el ARS aparece; el USD está completamente excluido
         assert total == 50000.0
         assert len(items) == 1
-        assert items[0][0].description == "ARS item"
+        assert items[0][0].description == "ars item"
 
     def test_usd_with_fx_included(self, session, two_person_scenario):
         """BR-019: USD con FX rate se convierte correctamente."""

@@ -179,7 +179,7 @@ def create_purchase(*, session: Session, payload: PurchaseCreate) -> Purchase:
         card_id=payload.card_id,
         payment_method=payload.payment_method,
         purchase_date=payload.purchase_date,
-        description=payload.description,
+        description=normalize_purchase_description(description=payload.description),
         currency=payload.currency,
         amount_original=_round_money(payload.amount_original),
         amount_ars=None,

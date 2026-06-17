@@ -31,7 +31,7 @@ class TestDetectRecurringExpenses:
 
         results = detect_recurring_expenses(session=session, min_occurrences=3)
         assert len(results) == 1
-        assert results[0]["description"] == "NETFLIX"
+        assert results[0]["description"] == "netflix"
         assert results[0]["occurrences"] == 3
 
     def test_below_threshold_not_included(self, session, two_person_scenario):
@@ -50,7 +50,7 @@ class TestDetectRecurringExpenses:
 
         results = detect_recurring_expenses(session=session, min_occurrences=2)
         descriptions = [r["description"] for r in results]
-        assert "DISNEY PLUS" in descriptions
+        assert "disney plus" in descriptions
 
     def test_same_month_counts_as_one(self, session, two_person_scenario):
         """Dos compras del mismo gasto en el mismo mes cuentan como 1 mes."""
@@ -61,7 +61,7 @@ class TestDetectRecurringExpenses:
         _purchase(session, s["alice_card"].id, "YPF", date(2025, 3, 15))
 
         results = detect_recurring_expenses(session=session, min_occurrences=3)
-        ypf = next((r for r in results if r["description"] == "YPF"), None)
+        ypf = next((r for r in results if r["description"] == "ypf"), None)
         # Solo 3 meses distintos (enero, febrero, marzo), no 4
         assert ypf is not None
         assert ypf["occurrences"] == 3
@@ -75,9 +75,9 @@ class TestDetectRecurringExpenses:
             _purchase(session, s["alice_card"].id, "SPOTIFY", date(2025, m, 15))
 
         results = detect_recurring_expenses(session=session, min_occurrences=3)
-        assert results[0]["description"] == "NETFLIX"  # más recurrente primero
+        assert results[0]["description"] == "netflix"  # más recurrente primero
         assert results[0]["occurrences"] == 4
-        assert results[1]["description"] == "SPOTIFY"
+        assert results[1]["description"] == "spotify"
         assert results[1]["occurrences"] == 3
 
     def test_avg_amount_calculated(self, session, two_person_scenario):
@@ -87,7 +87,7 @@ class TestDetectRecurringExpenses:
         _purchase(session, s["alice_card"].id, "OSDE", date(2025, 3, 15), amount=11000)
 
         results = detect_recurring_expenses(session=session, min_occurrences=3)
-        osde = next(r for r in results if r["description"] == "OSDE")
+        osde = next(r for r in results if r["description"] == "osde")
         assert osde["avg_amount"] == 11000.0
 
     def test_normalized_description_groups_variants(self, session, two_person_scenario):
@@ -101,7 +101,7 @@ class TestDetectRecurringExpenses:
         results = detect_recurring_expenses(session=session, min_occurrences=3)
         assert len(results) >= 1
         # La descripción normalizada no debe contener el patrón C.X/Y
-        tienda = next((r for r in results if "TIENDA NUBE" in r["description"]), None)
+        tienda = next((r for r in results if "tienda nube" in r["description"]), None)
         assert tienda is not None
 
     def test_empty_db_returns_empty(self, session):
@@ -115,7 +115,7 @@ class TestDetectRecurringExpenses:
         _purchase(session, s["alice_card"].id, "CABLEVISION", date(2025, 2, 15))
 
         results = detect_recurring_expenses(session=session, min_occurrences=3)
-        cable = next(r for r in results if r["description"] == "CABLEVISION")
+        cable = next(r for r in results if r["description"] == "cablevision")
         # months debe estar ordenado descendentemente
         assert cable["months"] == ["2025-03", "2025-02", "2025-01"]
         assert cable["last_seen"] == "2025-03"
