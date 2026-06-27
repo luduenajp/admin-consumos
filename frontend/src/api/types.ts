@@ -452,3 +452,66 @@ export interface ComprobanteExtraction {
     alias: string | null
   }
 }
+
+export interface Service {
+  id: number
+  name: string
+  expected_amount: number | null
+  typical_due_day: number | null
+  is_active: boolean
+  sort_order: number
+}
+
+export interface ServiceCreate {
+  name: string
+  expected_amount?: number | null
+  typical_due_day?: number | null
+  is_active?: boolean
+  sort_order?: number
+}
+
+export interface ServiceUpdate {
+  name?: string
+  expected_amount?: number | null
+  typical_due_day?: number | null
+  is_active?: boolean
+  sort_order?: number
+}
+
+export interface ServicePaymentRead {
+  id: number
+  service_id: number
+  year_month: string
+  due_date: string | null
+  paid_date: string | null
+  amount: number | null
+  notes: string | null
+}
+
+export interface ServicePaymentCreate {
+  service_id: number
+  year_month: string
+  due_date?: string | null
+  paid_date?: string | null
+  amount?: number | null
+  notes?: string | null
+}
+
+export interface ServicePaymentUpdate {
+  due_date?: string | null
+  paid_date?: string | null
+  amount?: number | null
+  notes?: string | null
+}
+
+export interface ServicePaymentWithMeta {
+  service: Service
+  payment: ServicePaymentRead | null
+  suggested_due_date: string | null
+}
+
+export interface ServicePaymentSummary {
+  unpaid_count: number
+  overdue_names: string[]
+  due_soon_names: string[]
+}

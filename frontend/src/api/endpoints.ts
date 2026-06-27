@@ -46,6 +46,14 @@ import type {
   BeneficiaryCreate,
   BeneficiaryUpdate,
   ComprobanteExtraction,
+  Service,
+  ServiceCreate,
+  ServiceUpdate,
+  ServicePaymentRead,
+  ServicePaymentCreate,
+  ServicePaymentUpdate,
+  ServicePaymentWithMeta,
+  ServicePaymentSummary,
 } from './types'
 
 export function fetchPeople(): Promise<Person[]> {
@@ -404,4 +412,42 @@ export function uploadComprobante(file: File): Promise<ComprobanteExtraction> {
   const formData = new FormData()
   formData.append('file', file)
   return postForm<ComprobanteExtraction>('/api/import/comprobante', formData)
+}
+
+// ─── Services ──────────────────────────────────────────────────────────────
+
+export function fetchServices(): Promise<Service[]> {
+  return getJson('/api/services')
+}
+
+export function createService(payload: ServiceCreate): Promise<Service> {
+  return postJson('/api/services', payload)
+}
+
+export function updateService(id: number, payload: ServiceUpdate): Promise<Service> {
+  return putJson(`/api/services/${id}`, payload)
+}
+
+export function deleteService(id: number): Promise<void> {
+  return deleteHttp(`/api/services/${id}`)
+}
+
+export function fetchServicePayments(yearMonth: string): Promise<ServicePaymentWithMeta[]> {
+  return getJson(`/api/service-payments?year_month=${yearMonth}`)
+}
+
+export function upsertServicePayment(payload: ServicePaymentCreate): Promise<ServicePaymentRead> {
+  return postJson('/api/service-payments', payload)
+}
+
+export function updateServicePayment(id: number, payload: ServicePaymentUpdate): Promise<ServicePaymentRead> {
+  return putJson(`/api/service-payments/${id}`, payload)
+}
+
+export function deleteServicePayment(id: number): Promise<void> {
+  return deleteHttp(`/api/service-payments/${id}`)
+}
+
+export function fetchServicePaymentSummary(yearMonth: string, today: string): Promise<ServicePaymentSummary> {
+  return getJson(`/api/service-payments/summary?year_month=${yearMonth}&today=${today}`)
 }
