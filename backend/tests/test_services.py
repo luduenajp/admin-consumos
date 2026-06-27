@@ -36,3 +36,33 @@ class TestModels:
         session.add(p2)
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+class TestSchemas:
+    def test_service_create_typical_due_day_valid(self):
+        from app.schemas import ServiceCreate
+        s = ServiceCreate(name="Gas", typical_due_day=20)
+        assert s.typical_due_day == 20
+
+    def test_service_create_typical_due_day_out_of_range(self):
+        from app.schemas import ServiceCreate
+        import pydantic
+        with pytest.raises(pydantic.ValidationError):
+            ServiceCreate(name="Gas", typical_due_day=32)
+
+    def test_service_payment_create_amount_must_be_positive(self):
+        from app.schemas import ServicePaymentCreate
+        import pydantic
+        with pytest.raises(pydantic.ValidationError):
+            ServicePaymentCreate(service_id=1, year_month="2026-06", amount=-100)
+
+    def test_service_payment_create_year_month_regex(self):
+        from app.schemas import ServicePaymentCreate
+        import pydantic
+        with pytest.raises(pydantic.ValidationError):
+            ServicePaymentCreate(service_id=1, year_month="2026-13")
+
+    def test_service_payment_create_null_amount_ok(self):
+        from app.schemas import ServicePaymentCreate
+        p = ServicePaymentCreate(service_id=1, year_month="2026-06")
+        assert p.amount is None

@@ -477,3 +477,66 @@ class SavingsTotalHistoryPoint(BaseModel):
     total_usd: float
     total_in_ars: float | None
     total_in_usd: float | None
+
+
+class ServiceCreate(BaseModel):
+    name: str
+    expected_amount: Optional[float] = None
+    typical_due_day: Optional[int] = Field(default=None, ge=1, le=31)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class ServiceRead(BaseModel):
+    id: int
+    name: str
+    expected_amount: Optional[float]
+    typical_due_day: Optional[int]
+    is_active: bool
+    sort_order: int
+
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    expected_amount: Optional[float] = None
+    typical_due_day: Optional[int] = Field(default=None, ge=1, le=31)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class ServicePaymentCreate(BaseModel):
+    service_id: int
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    due_date: Optional[date] = None
+    paid_date: Optional[date] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    notes: Optional[str] = None
+
+
+class ServicePaymentUpdate(BaseModel):
+    due_date: Optional[date] = None
+    paid_date: Optional[date] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    notes: Optional[str] = None
+
+
+class ServicePaymentRead(BaseModel):
+    id: int
+    service_id: int
+    year_month: str
+    due_date: Optional[date]
+    paid_date: Optional[date]
+    amount: Optional[float]
+    notes: Optional[str]
+
+
+class ServicePaymentWithMeta(BaseModel):
+    service: ServiceRead
+    payment: Optional[ServicePaymentRead]
+    suggested_due_date: Optional[date]
+
+
+class ServicePaymentSummary(BaseModel):
+    unpaid_count: int
+    overdue_names: list[str]
+    due_soon_names: list[str]
