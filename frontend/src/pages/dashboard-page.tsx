@@ -113,7 +113,10 @@ export function DashboardPage() {
     queryFn: () => fetchCategorySpending({ personId, yearMonth: monthFilter, isCommon }),
   })
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
 
   const { data: serviceSummary } = useQuery<ServicePaymentSummary>({
     queryKey: ['service-payment-summary', monthFilter, todayStr],

@@ -247,10 +247,19 @@ interface ServiceFormState {
   sort_order: string
 }
 
+interface EditFormState {
+  name: string
+  expected_amount: string
+  typical_due_day: string
+}
+
 function ManageServicesSection({ services }: { services: Service[] }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<ServiceFormState>({ name: '', expected_amount: '', typical_due_day: '', sort_order: '0' })
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditFormState>({ name: '', expected_amount: '', typical_due_day: '' })
+  const [editError, setEditError] = useState('')
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -271,7 +280,7 @@ function ManageServicesSection({ services }: { services: Service[] }) {
     onError: (e: Error) => setError(extractErrorMessage(e)),
   })
 
-  const updateMutation = useMutation({
+  const toggleActiveMutation = useMutation({
     mutationFn: (payload: { id: number; is_active: boolean }) =>
       updateService(payload.id, { is_active: payload.is_active }),
     onSuccess: () => {
@@ -279,6 +288,34 @@ function ManageServicesSection({ services }: { services: Service[] }) {
       queryClient.invalidateQueries({ queryKey: ['service-payments'] })
     },
   })
+
+  const editMutation = useMutation({
+    mutationFn: (id: number) => {
+      if (!editForm.name.trim()) throw new Error('El nombre es requerido')
+      return updateService(id, {
+        name: editForm.name.trim(),
+        expected_amount: editForm.expected_amount ? Number(editForm.expected_amount) : null,
+        typical_due_day: editForm.typical_due_day ? Number(editForm.typical_due_day) : null,
+      })
+    },
+    onSuccess: () => {
+      setEditingId(null)
+      setEditError('')
+      queryClient.invalidateQueries({ queryKey: ['services'] })
+      queryClient.invalidateQueries({ queryKey: ['service-payments'] })
+    },
+    onError: (e: Error) => setEditError(extractErrorMessage(e)),
+  })
+
+  const startEdit = (svc: Service) => {
+    setEditingId(svc.id)
+    setEditForm({
+      name: svc.name,
+      expected_amount: svc.expected_amount != null ? String(svc.expected_amount) : '',
+      typical_due_day: svc.typical_due_day != null ? String(svc.typical_due_day) : '',
+    })
+    setEditError('')
+  }
 
   return (
     <div className="panel" style={{ marginTop: '2rem' }}>
@@ -309,21 +346,85 @@ function ManageServicesSection({ services }: { services: Service[] }) {
         </thead>
         <tbody>
           {services.map(svc => (
-            <tr key={svc.id} style={{ opacity: svc.is_active ? 1 : 0.5 }}>
-              <td>{svc.name}</td>
-              <td>{svc.expected_amount ? formatCurrency(svc.expected_amount) : '—'}</td>
-              <td>{svc.typical_due_day ?? '—'}</td>
-              <td>{svc.is_active ? 'Activo' : 'Inactivo'}</td>
-              <td>
-                <button
-                  className="button"
-                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
-                  onClick={() => updateMutation.mutate({ id: svc.id, is_active: !svc.is_active })}
-                >
-                  {svc.is_active ? 'Desactivar' : 'Activar'}
-                </button>
-              </td>
-            </tr>
+            editingId === svc.id ? (
+              <tr key={svc.id}>
+                <td>
+                  <input
+                    className="input"
+                    value={editForm.name}
+                    onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                    style={{ width: '100%' }}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={editForm.expected_amount}
+                    onChange={e => setEditForm(f => ({ ...f, expected_amount: e.target.value }))}
+                    style={{ width: '100%' }}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="input"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={editForm.typical_due_day}
+                    onChange={e => setEditForm(f => ({ ...f, typical_due_day: e.target.value }))}
+                    style={{ width: '100%' }}
+                  />
+                </td>
+                <td>{svc.is_active ? 'Activo' : 'Inactivo'}</td>
+                <td>
+                  {editError && <div className="error" style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}>{editError}</div>}
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button
+                      className="button"
+                      style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
+                      onClick={() => editMutation.mutate(svc.id)}
+                      disabled={editMutation.isPending}
+                    >
+                      {editMutation.isPending ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button
+                      className="button"
+                      style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', background: 'var(--color-border)', color: 'var(--color-text)' }}
+                      onClick={() => { setEditingId(null); setEditError('') }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <tr key={svc.id} style={{ opacity: svc.is_active ? 1 : 0.5 }}>
+                <td>{svc.name}</td>
+                <td>{svc.expected_amount ? formatCurrency(svc.expected_amount) : '—'}</td>
+                <td>{svc.typical_due_day ?? '—'}</td>
+                <td>{svc.is_active ? 'Activo' : 'Inactivo'}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button
+                      className="button"
+                      style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
+                      onClick={() => startEdit(svc)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="button"
+                      style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
+                      onClick={() => toggleActiveMutation.mutate({ id: svc.id, is_active: !svc.is_active })}
+                    >
+                      {svc.is_active ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )
           ))}
         </tbody>
       </table>
