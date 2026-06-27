@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import difflib
 from datetime import date
 from typing import Optional
@@ -31,6 +32,8 @@ from app.models import (
     Saving,
     SavingSnapshot,
     SavingsExchangeRate,
+    Service,
+    ServicePayment,
 )
 from app.schemas import (
     BeneficiaryCreate,
@@ -53,6 +56,13 @@ from app.schemas import (
     CardStatementCreate,
     SavingsExchangeRateCreate,
     SavingsTotalHistoryPoint,
+    ServiceCreate,
+    ServiceRead,
+    ServiceUpdate,
+    ServicePaymentCreate,
+    ServicePaymentUpdate,
+    ServicePaymentRead,
+    ServicePaymentWithMeta,
 )
 from app.utils_dates import add_months, to_year_month
 from app.importers.visa_xlsx import normalize_purchase_description
@@ -2145,3 +2155,178 @@ def suggest_first_installment_month(
         m = 1
         y += 1
     return f"{y:04d}-{m:02d}", None, True
+
+
+# ─── Services ────────────────────────────────────────────────────────────────
+
+def list_services(session: Session) -> list[Service]:
+    return list(session.exec(select(Service).order_by(Service.sort_order, Service.id)).all())
+
+
+def create_service(session: Session, payload: ServiceCreate) -> Service:
+    svc = Service(**payload.model_dump())
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return svc
+
+
+def update_service(session: Session, service_id: int, payload: ServiceUpdate) -> Service:
+    svc = session.get(Service, service_id)
+    if svc is None:
+        raise ValueError(f"Service {service_id} not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(svc, field, value)
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return svc
+
+
+def delete_service(session: Session, service_id: int) -> None:
+    svc = session.get(Service, service_id)
+    if svc is None:
+        raise ValueError(f"Service {service_id} not found")
+    has_payments = session.exec(
+        select(ServicePayment).where(ServicePayment.service_id == service_id)
+    ).first()
+    if has_payments:
+        raise ValueError("Este servicio tiene pagos registrados. Usá is_active=false para desactivarlo.")
+    session.delete(svc)
+    session.commit()
+
+
+def _suggested_due_date_for(session: Session, service: Service, year_month: str) -> Optional[date]:
+    """Compute suggested due_date: previous month's due_date day in current month, or typical_due_day."""
+    year, month = int(year_month[:4]), int(year_month[5:7])
+    total_prev = year * 12 + (month - 1) - 1
+    prev_year, prev_month_0 = divmod(total_prev, 12)
+    prev_ym = f"{prev_year:04d}-{prev_month_0 + 1:02d}"
+
+    prev_payment = session.exec(
+        select(ServicePayment).where(
+            ServicePayment.service_id == service.id,
+            ServicePayment.year_month == prev_ym,
+            ServicePayment.due_date.is_not(None),  # type: ignore[attr-defined]
+        )
+    ).first()
+
+    if prev_payment and prev_payment.due_date:
+        max_day = calendar.monthrange(year, month)[1]
+        day = min(prev_payment.due_date.day, max_day)
+        return date(year, month, day)
+
+    if service.typical_due_day:
+        max_day = calendar.monthrange(year, month)[1]
+        day = min(service.typical_due_day, max_day)
+        return date(year, month, day)
+
+    return None
+
+
+def get_service_payments_for_month(session: Session, year_month: str) -> list[ServicePaymentWithMeta]:
+    services = session.exec(
+        select(Service).where(Service.is_active == True).order_by(Service.sort_order, Service.id)  # noqa: E712
+    ).all()
+
+    results = []
+    for svc in services:
+        payment = session.exec(
+            select(ServicePayment).where(
+                ServicePayment.service_id == svc.id,
+                ServicePayment.year_month == year_month,
+            )
+        ).first()
+
+        suggested = None if payment else _suggested_due_date_for(session, svc, year_month)
+
+        results.append(ServicePaymentWithMeta(
+            service=ServiceRead(**svc.model_dump()),
+            payment=ServicePaymentRead(**payment.model_dump()) if payment else None,
+            suggested_due_date=suggested,
+        ))
+    return results
+
+
+def upsert_service_payment(session: Session, payload: ServicePaymentCreate) -> ServicePayment:
+    existing = session.exec(
+        select(ServicePayment).where(
+            ServicePayment.service_id == payload.service_id,
+            ServicePayment.year_month == payload.year_month,
+        )
+    ).first()
+
+    if existing:
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            if field not in ("service_id", "year_month"):
+                setattr(existing, field, value)
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+
+    p = ServicePayment(**payload.model_dump())
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p
+
+
+def update_service_payment(session: Session, payment_id: int, payload: ServicePaymentUpdate) -> ServicePayment:
+    p = session.get(ServicePayment, payment_id)
+    if p is None:
+        raise ValueError(f"ServicePayment {payment_id} not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(p, field, value)
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p
+
+
+def delete_service_payment(session: Session, payment_id: int) -> None:
+    p = session.get(ServicePayment, payment_id)
+    if p is None:
+        raise ValueError(f"ServicePayment {payment_id} not found")
+    session.delete(p)
+    session.commit()
+
+
+def get_service_payment_summary(session: Session, year_month: str, today: date) -> dict:
+    from datetime import timedelta
+
+    services = session.exec(
+        select(Service).where(Service.is_active == True).order_by(Service.sort_order, Service.id)  # noqa: E712
+    ).all()
+
+    unpaid_count = 0
+    overdue_names: list[str] = []
+    due_soon_names: list[str] = []
+    cutoff = today + timedelta(days=3)
+
+    for svc in services:
+        payment = session.exec(
+            select(ServicePayment).where(
+                ServicePayment.service_id == svc.id,
+                ServicePayment.year_month == year_month,
+            )
+        ).first()
+
+        if payment and payment.paid_date is not None:
+            continue
+
+        unpaid_count += 1
+        due_date = payment.due_date if payment else None
+
+        if due_date is None:
+            continue
+        if due_date < today:
+            overdue_names.append(svc.name)
+        elif due_date <= cutoff:
+            due_soon_names.append(svc.name)
+
+    return {
+        "unpaid_count": unpaid_count,
+        "overdue_names": overdue_names,
+        "due_soon_names": due_soon_names,
+    }
