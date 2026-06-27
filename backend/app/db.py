@@ -28,6 +28,7 @@ def init_db() -> None:
     _migrate_lowercase_descriptions()
     _migrate_uppercase_categories()
     _migrate_reorganize_categories()
+    _migrate_add_service_tables()
 
 
 def _migrate_add_columns() -> None:
@@ -203,3 +204,37 @@ def _migrate_reorganize_categories() -> None:
 def get_session() -> Iterator[Session]:
     with Session(engine) as session:
         yield session
+
+
+def _migrate_add_service_tables() -> None:
+    """Create service and servicepayment tables if they don't exist (idempotent)."""
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS service (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                expected_amount REAL,
+                typical_due_day INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS servicepayment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_id INTEGER NOT NULL REFERENCES service(id),
+                year_month TEXT NOT NULL,
+                due_date TEXT,
+                paid_date TEXT,
+                amount REAL,
+                notes TEXT,
+                CONSTRAINT uq_servicepayment_service_month UNIQUE (service_id, year_month)
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_servicepayment_service_id ON servicepayment(service_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_servicepayment_year_month ON servicepayment(year_month)"
+        ))
+        conn.commit()

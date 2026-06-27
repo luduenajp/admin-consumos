@@ -198,3 +198,24 @@ class SavingsExchangeRate(SQLModel, table=True):
     date: str = Field(index=True)  # YYYY-MM-DD
     usd_buy: float   # price bank pays when buying USD (you receive this when selling USD)
     usd_sell: float  # price bank charges when selling USD (you pay this when buying USD)
+
+
+class Service(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    expected_amount: Optional[float] = None
+    typical_due_day: Optional[int] = None  # 1–31
+    is_active: bool = Field(default=True)
+    sort_order: int = Field(default=0)
+
+
+class ServicePayment(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("service_id", "year_month", name="uq_servicepayment_service_month"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    service_id: int = Field(foreign_key="service.id", index=True)
+    year_month: str = Field(index=True)  # YYYY-MM
+    due_date: Optional[date] = None
+    paid_date: Optional[date] = None
+    amount: Optional[float] = None
+    notes: Optional[str] = None
