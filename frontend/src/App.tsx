@@ -19,6 +19,9 @@ const GastosCategoriaPage = lazy(() =>
 const NuevaTransferenciaPage = lazy(() =>
   import('./pages/nueva-transferencia-page').then((m) => ({ default: m.NuevaTransferenciaPage })),
 )
+const ServiciosPage = lazy(() =>
+  import('./pages/servicios-page').then((m) => ({ default: m.ServiciosPage })),
+)
 
 type NavItem = { to: string; label: string; icon: string; end?: boolean; mobileHide?: boolean }
 
@@ -30,6 +33,7 @@ const NAV_GROUPS: { label: string; secondary: boolean; items: NavItem[] }[] = [
       { to: '/', label: 'Dashboard', icon: '📊', end: true },
       { to: '/gastos-categorias', label: 'Categorías', icon: '📊' },
       { to: '/import', label: 'Importar', icon: '📥' },
+      { to: '/servicios', label: 'Servicios', icon: '🧾' },
       { to: '/admin', label: 'Admin', icon: '⚙️' },
     ],
   },
@@ -129,6 +133,7 @@ function App() {
               <Route element={<GoalsPage />} path="/goals" />
               <Route element={<SavingsPage />} path="/ahorros" />
               <Route element={<NuevaTransferenciaPage />} path="/nueva-transferencia" />
+              <Route element={<ServiciosPage />} path="/servicios" />
               <Route element={<AdminPage />} path="/admin" />
             </Routes>
           </Suspense>
