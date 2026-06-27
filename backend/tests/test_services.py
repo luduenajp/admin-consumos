@@ -282,3 +282,93 @@ class TestServicePaymentSummary:
         today = dt_date(2026, 6, 27)
         summary = get_service_payment_summary(session, "2026-06", today)
         assert summary["unpaid_count"] == 1
+
+
+class TestServiceAPI:
+    def test_create_and_get_services(self, client):
+        r = client.post("/api/services", json={"name": "Gas", "typical_due_day": 20, "sort_order": 0})
+        assert r.status_code == 201
+        data = r.json()
+        assert data["name"] == "Gas"
+        assert data["typical_due_day"] == 20
+
+        r2 = client.get("/api/services")
+        assert r2.status_code == 200
+        assert len(r2.json()) == 1
+
+    def test_update_service(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        r2 = client.put(f"/api/services/{svc_id}", json={"name": "Gas Natural", "is_active": True})
+        assert r2.status_code == 200
+        assert r2.json()["name"] == "Gas Natural"
+
+    def test_delete_service_no_payments(self, client):
+        r = client.post("/api/services", json={"name": "Temp"})
+        svc_id = r.json()["id"]
+        r2 = client.delete(f"/api/services/{svc_id}")
+        assert r2.status_code == 204
+
+    def test_delete_service_with_payments_returns_409(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06"})
+        r2 = client.delete(f"/api/services/{svc_id}")
+        assert r2.status_code == 409
+
+    def test_get_service_payments_for_month(self, client):
+        r = client.post("/api/services", json={"name": "Gas", "typical_due_day": 15})
+        svc_id = r.json()["id"]
+        r2 = client.get("/api/service-payments?year_month=2026-06")
+        assert r2.status_code == 200
+        items = r2.json()
+        assert len(items) == 1
+        assert items[0]["service"]["id"] == svc_id
+        assert items[0]["payment"] is None
+        assert items[0]["suggested_due_date"] == "2026-06-15"
+
+    def test_upsert_service_payment(self, client):
+        r = client.post("/api/services", json={"name": "Luz"})
+        svc_id = r.json()["id"]
+        r2 = client.post("/api/service-payments", json={
+            "service_id": svc_id, "year_month": "2026-06",
+            "due_date": "2026-06-20", "paid_date": "2026-06-18", "amount": 10000
+        })
+        assert r2.status_code == 201
+        assert r2.json()["amount"] == 10000
+
+    def test_upsert_duplicate_updates_in_place(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        r1 = client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06"})
+        r2 = client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06", "amount": 5000})
+        assert r2.status_code == 200
+        assert r2.json()["id"] == r1.json()["id"]
+        assert r2.json()["amount"] == 5000
+
+    def test_put_service_payment(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        rp = client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06", "due_date": "2026-06-20"})
+        pid = rp.json()["id"]
+        r2 = client.put(f"/api/service-payments/{pid}", json={"paid_date": "2026-06-18", "amount": 15000})
+        assert r2.status_code == 200
+        assert r2.json()["paid_date"] == "2026-06-18"
+
+    def test_delete_service_payment(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        rp = client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06"})
+        pid = rp.json()["id"]
+        r2 = client.delete(f"/api/service-payments/{pid}")
+        assert r2.status_code == 204
+
+    def test_service_payment_summary(self, client):
+        r = client.post("/api/services", json={"name": "Gas"})
+        svc_id = r.json()["id"]
+        client.post("/api/service-payments", json={"service_id": svc_id, "year_month": "2026-06", "due_date": "2026-06-01"})
+        r2 = client.get("/api/service-payments/summary?year_month=2026-06&today=2026-06-27")
+        assert r2.status_code == 200
+        data = r2.json()
+        assert data["unpaid_count"] == 1
+        assert "Gas" in data["overdue_names"]

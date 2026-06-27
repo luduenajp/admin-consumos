@@ -75,10 +75,19 @@ from app.crud import (
     create_beneficiary,
     update_beneficiary,
     delete_beneficiary,
+    list_services,
+    create_service,
+    update_service,
+    delete_service,
+    get_service_payments_for_month,
+    upsert_service_payment,
+    update_service_payment,
+    delete_service_payment,
+    get_service_payment_summary,
 )
 from app.config import get_sqlite_db_path
 from app.db import get_session
-from app.models import Category, Person, PurchasePayer
+from app.models import Category, Person, PurchasePayer, ServicePayment
 from app.schemas import (
     BulkPurchaseUpdate,
     CardCreate,
@@ -129,6 +138,14 @@ from app.schemas import (
     BeneficiaryCreate,
     BeneficiaryRead,
     BeneficiaryUpdate,
+    ServiceCreate,
+    ServiceRead,
+    ServiceUpdate,
+    ServicePaymentCreate,
+    ServicePaymentUpdate,
+    ServicePaymentRead,
+    ServicePaymentWithMeta,
+    ServicePaymentSummary,
 )
 
 router = APIRouter()
@@ -1060,3 +1077,95 @@ def get_db_backup(request: Request) -> StreamingResponse:
         except OSError:
             pass
         raise
+
+
+# ─── Services ────────────────────────────────────────────────────────────────
+
+@router.get("/services", response_model=list[ServiceRead])
+def get_services() -> list[ServiceRead]:
+    with get_session() as session:
+        return [ServiceRead(**s.model_dump()) for s in list_services(session)]
+
+
+@router.post("/services", response_model=ServiceRead, status_code=201)
+def post_service(payload: ServiceCreate) -> ServiceRead:
+    with get_session() as session:
+        svc = create_service(session, payload)
+        return ServiceRead(**svc.model_dump())
+
+
+@router.put("/services/{service_id}", response_model=ServiceRead)
+def put_service(service_id: int, payload: ServiceUpdate) -> ServiceRead:
+    with get_session() as session:
+        try:
+            svc = update_service(session, service_id, payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return ServiceRead(**svc.model_dump())
+
+
+@router.delete("/services/{service_id}", status_code=204, response_model=None)
+def del_service(service_id: int) -> None:
+    with get_session() as session:
+        try:
+            delete_service(session, service_id)
+        except ValueError as e:
+            msg = str(e)
+            if "pagos" in msg:
+                raise HTTPException(status_code=409, detail=msg)
+            raise HTTPException(status_code=404, detail=msg)
+
+
+# NOTE: /service-payments/summary must be defined BEFORE /service-payments/{id}
+# so FastAPI doesn't interpret "summary" as a path parameter.
+
+@router.get("/service-payments/summary", response_model=ServicePaymentSummary)
+def get_service_payments_summary(
+    year_month: str,
+    today: Optional[str] = None,
+) -> ServicePaymentSummary:
+    from datetime import date as dt_date
+    today_date = dt_date.fromisoformat(today) if today else dt_date.today()
+    with get_session() as session:
+        result = get_service_payment_summary(session, year_month, today_date)
+        return ServicePaymentSummary(**result)
+
+
+@router.get("/service-payments", response_model=list[ServicePaymentWithMeta])
+def get_service_payments(year_month: str) -> list[ServicePaymentWithMeta]:
+    with get_session() as session:
+        return get_service_payments_for_month(session, year_month)
+
+
+@router.post("/service-payments", response_model=ServicePaymentRead)
+def post_service_payment(payload: ServicePaymentCreate, response: Response) -> ServicePaymentRead:
+    with get_session() as session:
+        existing = session.exec(
+            select(ServicePayment).where(
+                ServicePayment.service_id == payload.service_id,
+                ServicePayment.year_month == payload.year_month,
+            )
+        ).first()
+        p = upsert_service_payment(session, payload)
+        if existing is None:
+            response.status_code = 201
+        return ServicePaymentRead(**p.model_dump())
+
+
+@router.put("/service-payments/{payment_id}", response_model=ServicePaymentRead)
+def put_service_payment(payment_id: int, payload: ServicePaymentUpdate) -> ServicePaymentRead:
+    with get_session() as session:
+        try:
+            p = update_service_payment(session, payment_id, payload)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return ServicePaymentRead(**p.model_dump())
+
+
+@router.delete("/service-payments/{payment_id}", status_code=204, response_model=None)
+def del_service_payment(payment_id: int) -> None:
+    with get_session() as session:
+        try:
+            delete_service_payment(session, payment_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
