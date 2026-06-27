@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 
 import {
   fetchPeople,
@@ -12,7 +13,9 @@ import {
   fetchCategories,
   fetchCategorySpending,
   fetchBudgets,
+  fetchServicePaymentSummary,
 } from '../api/endpoints'
+import type { ServicePaymentSummary } from '../api/types'
 import { Spinner } from '../components/Spinner'
 import { TimelineChart } from '../components/TimelineChart'
 import { CategoryChart } from '../components/CategoryChart'
@@ -108,6 +111,13 @@ export function DashboardPage() {
   const { data: categorySpendingData, isLoading: categorySpendingLoading } = useQuery({
     queryKey: ['reports', 'category-spending', { personId, yearMonth: monthFilter, isCommon }],
     queryFn: () => fetchCategorySpending({ personId, yearMonth: monthFilter, isCommon }),
+  })
+
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  const { data: serviceSummary } = useQuery<ServicePaymentSummary>({
+    queryKey: ['service-payment-summary', monthFilter, todayStr],
+    queryFn: () => fetchServicePaymentSummary(monthFilter, todayStr),
   })
 
   const commonMutation = useMutation({
@@ -301,6 +311,41 @@ export function DashboardPage() {
             onSuccess={() => setShowTransferForm(false)}
             onCancel={() => setShowTransferForm(false)}
           />
+        </div>
+      )}
+
+      {/* Servicios sin pagar widget */}
+      {serviceSummary && serviceSummary.unpaid_count > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #f59e0b',
+          borderRadius: '0.5rem',
+          padding: '0.875rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+        }}>
+          <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>⚠️</span>
+          <div>
+            <strong style={{ color: '#92400e' }}>
+              {serviceSummary.unpaid_count} {serviceSummary.unpaid_count === 1 ? 'servicio sin pagar' : 'servicios sin pagar'}
+            </strong>
+            {(serviceSummary.overdue_names.length > 0 || serviceSummary.due_soon_names.length > 0) && (
+              <div style={{ fontSize: '0.875rem', color: '#78350f', marginTop: '0.25rem' }}>
+                {[
+                  ...serviceSummary.overdue_names.map(n => `${n} (vencido)`),
+                  ...serviceSummary.due_soon_names.map(n => `${n} (vence pronto)`),
+                ].join(', ')}
+              </div>
+            )}
+            <Link
+              to="/servicios"
+              style={{ fontSize: '0.875rem', color: '#b45309', fontWeight: 500, display: 'inline-block', marginTop: '0.25rem' }}
+            >
+              Ver servicios →
+            </Link>
+          </div>
         </div>
       )}
 
