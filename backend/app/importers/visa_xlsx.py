@@ -251,8 +251,8 @@ def parse_visa_xlsx(path: Path) -> list[ParsedPurchaseRow]:
     # Detect header row
     header_row_idx: Optional[int] = None
     for i in range(len(df_raw)):
-        row = df_raw.iloc[i].astype(str).tolist()
-        if any("descripción" in c.lower() for c in row) and any("monto en pesos" in c.lower() for c in row):
+        row = df_raw.iloc[i].tolist()
+        if any("descripción" in str(c).lower() for c in row) and any("monto en pesos" in str(c).lower() for c in row):
             header_row_idx = i
             break
 
