@@ -179,6 +179,7 @@ export interface CategorySpendingRow {
 }
 
 export interface PurchaseUpdate {
+  description?: string
   notes?: string | null
   category?: string | null
   is_common?: boolean
