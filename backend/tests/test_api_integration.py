@@ -157,6 +157,21 @@ class TestPurchasesEndpoints:
         r = client.patch(f"/api/purchases/{created['id']}", json={"description": ""})
         assert r.status_code == 422
 
+    def test_update_description_null_does_not_crash(self, client):
+        _, card = self._setup(client)
+        created = client.post(
+            "/api/purchases",
+            json={
+                "card_id": card["id"],
+                "purchase_date": "2025-01-15",
+                "description": "Original",
+                "currency": "ARS",
+                "amount_original": 1000,
+            },
+        ).json()
+        r = client.patch(f"/api/purchases/{created['id']}", json={"description": None})
+        assert r.status_code in (400, 409)
+
 
 class TestCategoriesEndpoints:
     def test_create_and_list(self, client):
