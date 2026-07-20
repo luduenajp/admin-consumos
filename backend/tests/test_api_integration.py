@@ -126,6 +126,37 @@ class TestPurchasesEndpoints:
         r = client.delete("/api/purchases/99999")
         assert r.status_code == 404
 
+    def test_update_description_is_normalized(self, client):
+        _, card = self._setup(client)
+        created = client.post(
+            "/api/purchases",
+            json={
+                "card_id": card["id"],
+                "purchase_date": "2025-01-15",
+                "description": "Original",
+                "currency": "ARS",
+                "amount_original": 1000,
+            },
+        ).json()
+        r = client.patch(f"/api/purchases/{created['id']}", json={"description": "  Nueva Descripcion  "})
+        assert r.status_code == 200
+        assert r.json()["description"] == "nueva descripcion"
+
+    def test_update_description_empty_string_rejected(self, client):
+        _, card = self._setup(client)
+        created = client.post(
+            "/api/purchases",
+            json={
+                "card_id": card["id"],
+                "purchase_date": "2025-01-15",
+                "description": "Original",
+                "currency": "ARS",
+                "amount_original": 1000,
+            },
+        ).json()
+        r = client.patch(f"/api/purchases/{created['id']}", json={"description": ""})
+        assert r.status_code == 422
+
 
 class TestCategoriesEndpoints:
     def test_create_and_list(self, client):

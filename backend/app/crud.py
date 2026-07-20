@@ -579,11 +579,13 @@ def list_purchases(
 
 
 def update_purchase(*, session: Session, purchase_id: int, payload: PurchaseUpdate) -> Purchase:
-    """Update editable fields of an existing purchase (notes, category)."""
+    """Update editable fields of an existing purchase (notes, category, description)."""
     purchase = session.get(Purchase, purchase_id)
     if purchase is None:
         raise ValueError(f"Purchase {purchase_id} not found")
     update_data = payload.model_dump(exclude_unset=True)
+    if "description" in update_data:
+        update_data["description"] = normalize_purchase_description(description=update_data["description"])
     for field, value in update_data.items():
         setattr(purchase, field, value)
     session.commit()

@@ -200,6 +200,7 @@ class CategorySpendingRow(BaseModel):
 
 
 class PurchaseUpdate(BaseModel):
+    description: Optional[str] = Field(default=None, min_length=1)
     notes: Optional[str] = None
     category: Optional[str] = None
     is_common: Optional[bool] = None
