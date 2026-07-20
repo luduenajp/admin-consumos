@@ -792,36 +792,49 @@
 /* ------------------------------------------------------------------ */
 
 .purchaseMobileEditOverlay {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 2000;
+  animation: overlayFadeIn 0.2s ease;
+}
+
+.purchaseMobileEditSheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: sheetFadeIn 0.2s ease;
 }
 
 @media (max-width: 768px) {
   .purchaseMobileEditOverlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(15, 23, 42, 0.5);
-    z-index: 2000;
-    animation: overlayFadeIn 0.2s ease;
+    align-items: flex-end;
+    justify-content: stretch;
   }
-}
 
-.purchaseMobileEditSheet {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
-  max-height: 80vh;
-  overflow-y: auto;
-  animation: sheetSlideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  .purchaseMobileEditSheet {
+    max-width: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation: sheetSlideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
 @keyframes sheetSlideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+@keyframes sheetFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .purchaseMobileEditHeader {
