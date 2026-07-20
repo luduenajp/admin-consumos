@@ -753,7 +753,7 @@ export function DashboardPage() {
                             <td>
                               {row.installment_index}/{row.installments_total}
                             </td>
-                            <td style={{ textAlign: 'center' }}>
+                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
                                 className="checkbox"
