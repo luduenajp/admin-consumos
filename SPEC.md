@@ -428,6 +428,10 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 
 `POST /api/purchases` (UC-020) calls `find_duplicate_purchase` before creating. If an existing purchase matches on `card_id`, `payment_method`, `purchase_date`, `description`, `currency`, `amount_original`, and `installments_total`, the request is rejected with `409 "Duplicate purchase"`. This guards against accidental double-submits (e.g. the comprobante flow, UC-053/054) and is independent of import deduplication (BR-005, which uses fingerprints on `ImportedRow`).
 
+### BR-029: Description Editable via Partial Update, Normalized Like Creation
+
+`PurchaseUpdate.description` (UC-021) is optional but, when provided, must be non-empty (`min_length=1`, `422` otherwise). `update_purchase` runs it through the same `normalize_purchase_description` (BR-020) used by `create_purchase`, so a manually edited description ends up in the same normalized form (lowercased, installment/code patterns stripped) as an imported or manually created one. Whitespace-only input passes the length check but normalizes to an empty string — same pre-existing gap as `PurchaseCreate.description`, not specific to update.
+
 ---
 
 ## 4. Use Cases — Entity Management
@@ -579,10 +583,11 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 ### UC-021: Update Purchase (Partial)
 
 - **Endpoint:** `PATCH /api/purchases/{purchase_id}`
-- **Payload:** `PurchaseUpdate { notes?, category?, is_common?, debtor_id?, beneficiary_person_id?, debt_settled? }`
-- **Steps:** Updates only provided fields. Does **not** regenerate installment schedule.
+- **Payload:** `PurchaseUpdate { description?, notes?, category?, is_common?, debtor_id?, beneficiary_person_id?, debt_settled? }`
+- **Steps:** Updates only provided fields. Does **not** regenerate installment schedule. `description`, if provided, is normalized the same way as on creation (BR-020, BR-029).
 - **Result:** `200` → `PurchaseRead`
-- **Edge Cases:** Purchase not found → `404`.
+- **Edge Cases:** Purchase not found → `404`. Empty `description` → `422` (`min_length=1`).
+- **UI:** Dashboard "Resumen del mes" table — click any row (mobile card or desktop table row) to open the purchase edit sheet, which allows editing Descripción and Detalle/Notas in addition to the pre-existing Categoría and Gasto común fields.
 
 ### UC-022: Delete Purchase
 
