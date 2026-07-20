@@ -671,7 +671,15 @@ export function DashboardPage() {
                           return b.amount_ars - a.amount_ars;
                         })
                         .map((row) => (
-                          <tr key={`${row.purchase_id}-${row.installment_index}`}>
+                          <tr
+                            key={`${row.purchase_id}-${row.installment_index}`}
+                            onClick={() => {
+                              setMobileEditId(row.purchase_id)
+                              setMobileEditNotes(row.notes ?? '')
+                              setMobileEditDescription(row.description)
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <td>{row.purchase_date}</td>
                             <td>
                               <div className="tooltip-container">
