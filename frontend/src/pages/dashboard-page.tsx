@@ -53,6 +53,7 @@ export function DashboardPage() {
   const [mobileResumenSearch, setMobileResumenSearch] = useState('')
   const [mobileEditId, setMobileEditId] = useState<number | null>(null)
   const [mobileEditNotes, setMobileEditNotes] = useState('')
+  const [mobileEditDescription, setMobileEditDescription] = useState('')
   const [pendingDelete, setPendingDelete] = useState<{ id: number; description: string } | null>(null)
   const personId = personFilter ? Number(personFilter) : undefined
   const cardId = cardFilter ? Number(cardFilter) : undefined
@@ -404,10 +405,10 @@ export function DashboardPage() {
                   <div
                     key={`${row.purchase_id}-${row.installment_index}`}
                     className="purchaseCard"
-                    onClick={() => { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? '') }}
+                    onClick={() => { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? ''); setMobileEditDescription(row.description) }}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? '') } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMobileEditId(row.purchase_id); setMobileEditNotes(row.notes ?? ''); setMobileEditDescription(row.description) } }}
                   >
                     <div className="purchaseCardHeader">
                       <span className="purchaseCardDescription">{row.description}</span>
@@ -463,6 +464,22 @@ export function DashboardPage() {
                 >✕</button>
               </div>
               <div className="purchaseMobileEditBody">
+                <div className="formRow">
+                  <label className="label">Descripción</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={mobileEditDescription}
+                    placeholder="Descripción de la compra..."
+                    onChange={(e) => setMobileEditDescription(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = mobileEditDescription.trim()
+                      if (trimmed && trimmed !== editRow.description) {
+                        patchMutation.mutate({ id: editRow.purchase_id, payload: { description: trimmed } })
+                      }
+                    }}
+                  />
+                </div>
                 <div className="formRow">
                   <label className="label">Categoría</label>
                   <select
