@@ -20,6 +20,7 @@ export function NuevaTransferenciaPage() {
 
     const [sharedFile, setSharedFile] = useState<File | null>(null)
     const [retrieving, setRetrieving] = useState(isShared)
+    const [retrieveFailed, setRetrieveFailed] = useState(false)
 
     useEffect(() => {
         if (!isShared) return
@@ -30,9 +31,19 @@ export function NuevaTransferenciaPage() {
                 return pendingToken ? fetchPendingSharedComprobante(pendingToken) : null
             })
             .then((file) => {
-                if (!cancelled && file) setSharedFile(file)
+                if (cancelled) return
+                if (file) {
+                    setSharedFile(file)
+                } else {
+                    console.error('[share-target] no se encontró el comprobante compartido (ni en Cache API ni por token)')
+                    setRetrieveFailed(true)
+                }
             })
-            .catch(() => undefined)
+            .catch((err) => {
+                if (cancelled) return
+                console.error('[share-target] fallo al recuperar el comprobante compartido', err)
+                setRetrieveFailed(true)
+            })
             .finally(() => {
                 if (!cancelled) setRetrieving(false)
             })
@@ -52,12 +63,19 @@ export function NuevaTransferenciaPage() {
                         <span className="muted">Recuperando comprobante compartido...</span>
                     </div>
                 ) : (
-                    <PurchaseForm
-                        initialValues={{ payment_method: 'transfer' }}
-                        initialFile={sharedFile ?? undefined}
-                        onSuccess={() => navigate('/')}
-                        onCancel={() => navigate('/')}
-                    />
+                    <>
+                        {retrieveFailed && (
+                            <p className="error">
+                                No pudimos recuperar el comprobante compartido automáticamente. Subilo manualmente abajo.
+                            </p>
+                        )}
+                        <PurchaseForm
+                            initialValues={{ payment_method: 'transfer' }}
+                            initialFile={sharedFile ?? undefined}
+                            onSuccess={() => navigate('/')}
+                            onCancel={() => navigate('/')}
+                        />
+                    </>
                 )}
             </div>
         </div>
