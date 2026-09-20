@@ -40,6 +40,7 @@ from app.api import router as api_router
 from app.config import get_auth_credentials, get_cors_origins
 from app.db import init_db
 from app.import_api import router as import_router
+from app.multipart_recovery import recover_file_part
 from app.share_target_store import put as store_pending_share
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,21 @@ def create_app() -> FastAPI:
                     break
         except Exception as exc:
             print(f"[share-target] request.form() raised: {exc!r}", flush=True)
+
+        if not content:
+            # Starlette encontró 0 partes: algunos navegadores (confirmado con
+            # Samsung Internet) mandan un body multipart válido pero con un
+            # byte de más antes del boundary de cierre, lo que rompe el
+            # parser estándar. Reintentamos con un parser más tolerante antes
+            # de darnos por vencidos.
+            recovered = recover_file_part(body, content_type)
+            if recovered:
+                content, filename, file_content_type = recovered
+                print(
+                    f"[share-target] RECOVERED via lenient parser: file={filename!r} "
+                    f"type={file_content_type!r} size={len(content)}",
+                    flush=True,
+                )
 
         if content:
             token = store_pending_share(content, filename, file_content_type)
