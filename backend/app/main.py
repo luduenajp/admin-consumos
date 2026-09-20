@@ -102,7 +102,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/share-target")
-    async def share_target_fallback(file: UploadFile | None = File(None)) -> RedirectResponse:
+    async def share_target_fallback(request: Request, file: UploadFile | None = File(None)) -> RedirectResponse:
         # El service worker no intercepta este POST (ver frontend/public/sw.js):
         # en Android/Chrome el body de la navegación del share target no le
         # llega de forma confiable al fetch handler del SW. Se maneja acá,
@@ -113,7 +113,29 @@ def create_app() -> FastAPI:
                 token = store_pending_share(
                     content, file.filename, file.content_type or "application/octet-stream"
                 )
+                print(
+                    f"[share-target] OK file={file.filename!r} type={file.content_type!r} "
+                    f"size={len(content)}",
+                    flush=True,
+                )
                 return RedirectResponse(f"/nueva-transferencia?shared=1&token={token}", status_code=303)
+
+        # Diagnóstico temporal: no vino un archivo utilizable bajo el campo
+        # "file". Volcamos headers + el resto de los campos del form (si los
+        # hay) para ver qué mandó realmente el share sheet de Android.
+        form_parts = []
+        for key, value in (await request.form()).multi_items():
+            if hasattr(value, "filename"):
+                blob = await value.read()
+                form_parts.append(f"{key}=file({value.filename!r},{value.content_type!r},{len(blob)}b)")
+            else:
+                form_parts.append(f"{key}={value!r}")
+        print(
+            f"[share-target] NO FILE. content-type={request.headers.get('content-type')!r} "
+            f"content-length={request.headers.get('content-length')!r} "
+            f"file-param={file!r} form=[{', '.join(form_parts)}]",
+            flush=True,
+        )
         return RedirectResponse("/nueva-transferencia", status_code=303)
 
     @app.on_event("startup")
