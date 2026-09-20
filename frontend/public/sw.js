@@ -30,6 +30,19 @@ self.addEventListener('fetch', (event) => {
               })
             )
             diag = 'ok:' + file.size
+          } else {
+            // No vino nada bajo el campo "file": listamos lo que sí llegó
+            // (nombres de campo, tipos y tamaños) para diagnosticar un
+            // posible mismatch de MIME contra el `accept` del manifest.
+            const parts = []
+            for (const [key, value] of formData.entries()) {
+              if (value && typeof value === 'object' && 'size' in value) {
+                parts.push(`${key}=file(${value.type || '?'},${value.size}b,${value.name || '?'})`)
+              } else {
+                parts.push(`${key}=${String(value).slice(0, 30)}`)
+              }
+            }
+            diag = 'no-file:[' + parts.join('|') + ']'
           }
         } catch (err) {
           diag = 'error:' + (err && err.message ? String(err.message).slice(0, 80) : String(err))
