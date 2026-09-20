@@ -5,7 +5,7 @@ import logging
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,6 +40,7 @@ from app.api import router as api_router
 from app.config import get_auth_credentials, get_cors_origins
 from app.db import init_db
 from app.import_api import router as import_router
+from app.share_target_store import put as store_pending_share
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,18 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/share-target")
-    def share_target_fallback() -> RedirectResponse:
+    async def share_target_fallback(file: UploadFile | None = File(None)) -> RedirectResponse:
         # Fallback si el service worker no intercepta el POST del share sheet
-        # (p. ej. site data borrado): se descarta el archivo y se abre el form vacío.
+        # (p. ej. site data borrado, o primer lanzamiento en frío en Android
+        # donde el SW aún no controla la página): el archivo se guarda
+        # server-side con un token de un solo uso en vez de descartarse.
+        if file is not None and file.filename:
+            content = await file.read()
+            if content:
+                token = store_pending_share(
+                    content, file.filename, file.content_type or "application/octet-stream"
+                )
+                return RedirectResponse(f"/nueva-transferencia?shared=1&token={token}", status_code=303)
         return RedirectResponse("/nueva-transferencia", status_code=303)
 
     @app.on_event("startup")

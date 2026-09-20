@@ -59,6 +59,40 @@ def test_share_target_fallback_no_auth(auth_client):
     assert r.headers["location"] == "/nueva-transferencia"
 
 
+def test_share_target_fallback_with_file_stashes_and_redirects_with_token(auth_client):
+    """Si el SW no interceptó pero llegó un archivo, el backend lo guarda y
+    agrega ?token= para que el frontend lo recupere (UC-054)."""
+    r = auth_client.post(
+        "/share-target",
+        files={"file": ("comprobante.png", b"fake-image-bytes", "image/png")},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    location = r.headers["location"]
+    assert location.startswith("/nueva-transferencia?shared=1&token=")
+    token = location.split("token=", 1)[1]
+
+    r2 = auth_client.get(
+        f"/api/share-target/pending/{token}", headers=_auth_header("testuser", "testpass")
+    )
+    assert r2.status_code == 200
+    assert r2.content == b"fake-image-bytes"
+    assert r2.headers["content-type"] == "image/png"
+
+    # one-shot: consumido, la segunda vez es 404
+    r3 = auth_client.get(
+        f"/api/share-target/pending/{token}", headers=_auth_header("testuser", "testpass")
+    )
+    assert r3.status_code == 404
+
+
+def test_share_target_pending_unknown_token_returns_404(auth_client):
+    r = auth_client.get(
+        "/api/share-target/pending/does-not-exist", headers=_auth_header("testuser", "testpass")
+    )
+    assert r.status_code == 404
+
+
 def test_api_no_auth_returns_401(auth_client):
     r = auth_client.get("/api/people")
     assert r.status_code == 401

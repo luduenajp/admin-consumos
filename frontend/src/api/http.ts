@@ -67,6 +67,24 @@ export async function postForm<T>(input: RequestInfo, formData: FormData): Promi
   })
 }
 
+export async function getFile(input: RequestInfo, fallbackName: string): Promise<File> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  try {
+    const response = await fetch(input, { signal: controller.signal })
+    if (!response.ok) {
+      const error: HttpError = new Error(`HTTP ${response.status}`) as HttpError
+      error.status = response.status
+      throw error
+    }
+    const blob = await response.blob()
+    const name = decodeURIComponent(response.headers.get('X-File-Name') ?? fallbackName)
+    return new File([blob], name, { type: blob.type })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export async function deleteHttp(input: RequestInfo): Promise<void> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { fetchPendingSharedComprobante } from '../api/endpoints'
 import { PurchaseForm } from '../components/PurchaseForm'
 import { Spinner } from '../components/Spinner'
 import { retrieveSharedFile } from '../utils/sharedFile'
@@ -7,12 +8,15 @@ import { retrieveSharedFile } from '../utils/sharedFile'
 /**
  * Destino del Web Share Target: al compartir un comprobante desde Android,
  * el service worker lo deja en Cache API y redirige acá con ?shared=1.
+ * Si el SW no interceptó el POST (p. ej. lanzamiento en frío), el backend
+ * lo deja pendiente y agrega ?token=... para recuperarlo por API (UC-054).
  * También funciona como deep link directo (formulario vacío).
  */
 export function NuevaTransferenciaPage() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const isShared = searchParams.get('shared') === '1'
+    const pendingToken = searchParams.get('token')
 
     const [sharedFile, setSharedFile] = useState<File | null>(null)
     const [retrieving, setRetrieving] = useState(isShared)
@@ -21,6 +25,10 @@ export function NuevaTransferenciaPage() {
         if (!isShared) return
         let cancelled = false
         retrieveSharedFile()
+            .then((file) => {
+                if (file) return file
+                return pendingToken ? fetchPendingSharedComprobante(pendingToken) : null
+            })
             .then((file) => {
                 if (!cancelled && file) setSharedFile(file)
             })
@@ -31,7 +39,7 @@ export function NuevaTransferenciaPage() {
         return () => {
             cancelled = true
         }
-    }, [isShared])
+    }, [isShared, pendingToken])
 
     return (
         <div className="page">

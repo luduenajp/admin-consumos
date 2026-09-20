@@ -87,6 +87,7 @@ from app.crud import (
 )
 from app.config import get_sqlite_db_path
 from app.db import get_session
+from app.share_target_store import pop as pop_pending_share
 from app.models import Category, Person, PurchasePayer, ServicePayment
 from app.schemas import (
     BulkPurchaseUpdate,
@@ -1169,3 +1170,19 @@ def del_service_payment(payment_id: int) -> None:
             delete_service_payment(session, payment_id)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
+
+
+# --- Web Share Target fallback (UC-054) ---
+
+@router.get("/share-target/pending/{token}")
+def get_pending_share(token: str) -> Response:
+    """Consume (one-shot) a file stashed by the POST /share-target backend
+    fallback when the service worker didn't intercept the share sheet."""
+    item = pop_pending_share(token)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado o expirado")
+    return Response(
+        content=item.content,
+        media_type=item.content_type,
+        headers={"X-File-Name": item.filename},
+    )

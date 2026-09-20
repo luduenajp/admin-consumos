@@ -882,7 +882,7 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
   2. The `/nueva-transferencia` page retrieves and deletes the stashed file (`retrieveSharedFile()` in `frontend/src/utils/sharedFile.ts`)
   3. The file is injected into `PurchaseForm` (`initialFile` prop) with `payment_method: 'transfer'`, triggering UC-053 extraction and auto-fill
   4. The user confirms and saves manually (confirm-before-save)
-- **Backend fallback:** `POST /share-target` (no auth) returns `303 → /nueva-transferencia` discarding the file, for the case where the SW is not controlling the page.
+- **Backend fallback:** `POST /share-target` (no auth) handles the case where the SW is not controlling the page (e.g. cold app launch on Android, or site data cleared). If a `file` was posted, it's stashed server-side (in-memory, one-shot, 5-minute TTL — `backend/app/share_target_store.py`) under a random token and the response is `303 → /nueva-transferencia?shared=1&token=<token>`; the page fetches it via `GET /api/share-target/pending/{token}` (`fetchPendingSharedComprobante()` in `frontend/src/api/endpoints.ts`), which consumes (pops) the entry — a second request for the same token returns `404`. If no file was posted, it falls back to the old behavior: `303 → /nueva-transferencia` with an empty form.
 - **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*`, `/share-target` and `/api/backup/db` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials and a 401 makes the PWA non-installable; `/api/backup/db` has its own Bearer-token auth via `BACKUP_TOKEN` — UC-100). See `PUBLIC_PATHS` in `backend/app/main.py`.
 - **SPA fallback:** `SPAStaticFiles` in `main.py` serves `index.html` for client-side deep links (e.g. `/nueva-transferencia`); API 404s are not masked.
 
@@ -1187,6 +1187,7 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 | `POST` | `/api/import/gsheets` | UC-052 | Import Google Sheets CSV |
 | `POST` | `/api/import/comprobante` | UC-053 | Extract comprobante data (Claude Vision) |
 | `POST` | `/share-target` | UC-054 | Web Share Target fallback (303 redirect, no auth) |
+| `GET` | `/api/share-target/pending/{token}` | UC-054 | Consume (one-shot) a file stashed by the `/share-target` fallback |
 | `GET` | `/api/savings` | UC-070 | List savings with current value |
 | `POST` | `/api/savings` | UC-071 | Create saving |
 | `PATCH` | `/api/savings/{id}` | UC-072 | Update saving |

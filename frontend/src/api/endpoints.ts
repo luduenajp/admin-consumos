@@ -1,4 +1,4 @@
-import { deleteHttp, getJson, patchJson, postForm, postJson, putJson } from './http'
+import { deleteHttp, getFile, getJson, patchJson, postForm, postJson, putJson } from './http'
 import type {
   Card,
   Category,
@@ -412,6 +412,15 @@ export function uploadComprobante(file: File): Promise<ComprobanteExtraction> {
   const formData = new FormData()
   formData.append('file', file)
   return postForm<ComprobanteExtraction>('/api/import/comprobante', formData)
+}
+
+/**
+ * Recupera (y consume) un comprobante que quedó pendiente en el backend
+ * porque el service worker no interceptó el POST de /share-target
+ * (ver backend/app/main.py:share_target_fallback, UC-054).
+ */
+export function fetchPendingSharedComprobante(token: string): Promise<File> {
+  return getFile(`/api/share-target/pending/${token}`, 'comprobante')
 }
 
 // ─── Services ──────────────────────────────────────────────────────────────
