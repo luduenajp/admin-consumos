@@ -17,6 +17,7 @@ export function NuevaTransferenciaPage() {
     const [searchParams] = useSearchParams()
     const isShared = searchParams.get('shared') === '1'
     const pendingToken = searchParams.get('token')
+    const swDiag = searchParams.get('sw')
 
     const [sharedFile, setSharedFile] = useState<File | null>(null)
     const [retrieving, setRetrieving] = useState(isShared)
@@ -67,6 +68,7 @@ export function NuevaTransferenciaPage() {
                         {retrieveFailed && (
                             <p className="error">
                                 No pudimos recuperar el comprobante compartido automáticamente. Subilo manualmente abajo.
+                                {swDiag && <> (diagnóstico: <code>{swDiag}</code>)</>}
                             </p>
                         )}
                         <PurchaseForm
