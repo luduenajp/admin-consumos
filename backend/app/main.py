@@ -103,10 +103,10 @@ def create_app() -> FastAPI:
 
     @app.post("/share-target")
     async def share_target_fallback(file: UploadFile | None = File(None)) -> RedirectResponse:
-        # Fallback si el service worker no intercepta el POST del share sheet
-        # (p. ej. site data borrado, o primer lanzamiento en frío en Android
-        # donde el SW aún no controla la página): el archivo se guarda
-        # server-side con un token de un solo uso en vez de descartarse.
+        # El service worker no intercepta este POST (ver frontend/public/sw.js):
+        # en Android/Chrome el body de la navegación del share target no le
+        # llega de forma confiable al fetch handler del SW. Se maneja acá,
+        # guardando el archivo server-side con un token de un solo uso.
         if file is not None and file.filename:
             content = await file.read()
             if content:

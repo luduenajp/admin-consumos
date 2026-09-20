@@ -878,11 +878,11 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 
 - **Flow:** The frontend is an installable PWA (`manifest.webmanifest` with `share_target`). On Android, sharing an image/PDF to the installed app POSTs it to `/share-target` (multipart, field `file`).
 - **Steps:**
-  1. The service worker (`frontend/public/sw.js`) intercepts `POST /share-target`, stashes the file in Cache API (`shared-comprobante`), and responds `303 → /nueva-transferencia?shared=1` — the request never reaches the backend
-  2. The `/nueva-transferencia` page retrieves and deletes the stashed file (`retrieveSharedFile()` in `frontend/src/utils/sharedFile.ts`)
-  3. The file is injected into `PurchaseForm` (`initialFile` prop) with `payment_method: 'transfer'`, triggering UC-053 extraction and auto-fill
-  4. The user confirms and saves manually (confirm-before-save)
-- **Backend fallback:** `POST /share-target` (no auth) handles the case where the SW is not controlling the page (e.g. cold app launch on Android, or site data cleared). If a `file` was posted, it's stashed server-side (in-memory, one-shot, 5-minute TTL — `backend/app/share_target_store.py`) under a random token and the response is `303 → /nueva-transferencia?shared=1&token=<token>`; the page fetches it via `GET /api/share-target/pending/{token}` (`fetchPendingSharedComprobante()` in `frontend/src/api/endpoints.ts`), which consumes (pops) the entry — a second request for the same token returns `404`. If no file was posted, it falls back to the old behavior: `303 → /nueva-transferencia` with an empty form.
+  1. `POST /share-target` (no auth, in `main.py`) receives the multipart POST directly — the service worker (`frontend/public/sw.js`) deliberately does **not** intercept this request. It used to (stashing the file in Cache API), but on tested Android/Chrome versions the SW's `event.request.formData()` came back completely empty (not even the `title`/`text` text fields), a known Chrome bug where the share-target navigation's body doesn't reach the fetch handler. Letting the request hit the network instead is reliable, since the backend's multipart parser (Starlette/`python-multipart`) isn't affected by that bug.
+  2. If a `file` was posted, it's stashed server-side (in-memory, one-shot, 5-minute TTL — `backend/app/share_target_store.py`) under a random token and the response is `303 → /nueva-transferencia?shared=1&token=<token>`. If no file was posted, `303 → /nueva-transferencia` with an empty form.
+  3. The `/nueva-transferencia` page fetches the pending file via `GET /api/share-target/pending/{token}` (`fetchPendingSharedComprobante()` in `frontend/src/api/endpoints.ts`), which consumes (pops) the entry — a second request for the same token returns `404`. `retrieveSharedFile()` (`frontend/src/utils/sharedFile.ts`, Cache API) is tried first as a defensive fallback in case some browser does deliver the file to the SW, but is not relied upon.
+  4. The file is injected into `PurchaseForm` (`initialFile` prop) with `payment_method: 'transfer'`, triggering UC-053 extraction and auto-fill
+  5. The user confirms and saves manually (confirm-before-save)
 - **Auth exemptions:** `/manifest.webmanifest`, `/sw.js`, `/icons/*`, `/share-target` and `/api/backup/db` are exempt from Basic Auth (Chrome fetches manifest/icons without credentials and a 401 makes the PWA non-installable; `/api/backup/db` has its own Bearer-token auth via `BACKUP_TOKEN` — UC-100). See `PUBLIC_PATHS` in `backend/app/main.py`.
 - **SPA fallback:** `SPAStaticFiles` in `main.py` serves `index.html` for client-side deep links (e.g. `/nueva-transferencia`); API 404s are not masked.
 
@@ -1186,8 +1186,8 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
 | `POST` | `/api/import/visa-pdf` | UC-051 | Import Visa/MC PDF |
 | `POST` | `/api/import/gsheets` | UC-052 | Import Google Sheets CSV |
 | `POST` | `/api/import/comprobante` | UC-053 | Extract comprobante data (Claude Vision) |
-| `POST` | `/share-target` | UC-054 | Web Share Target fallback (303 redirect, no auth) |
-| `GET` | `/api/share-target/pending/{token}` | UC-054 | Consume (one-shot) a file stashed by the `/share-target` fallback |
+| `POST` | `/share-target` | UC-054 | Web Share Target handler (303 redirect, no auth) |
+| `GET` | `/api/share-target/pending/{token}` | UC-054 | Consume (one-shot) a file stashed by `/share-target` |
 | `GET` | `/api/savings` | UC-070 | List savings with current value |
 | `POST` | `/api/savings` | UC-071 | Create saving |
 | `PATCH` | `/api/savings/{id}` | UC-072 | Update saving |

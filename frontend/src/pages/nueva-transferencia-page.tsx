@@ -7,9 +7,12 @@ import { retrieveSharedFile } from '../utils/sharedFile'
 
 /**
  * Destino del Web Share Target: al compartir un comprobante desde Android,
- * el service worker lo deja en Cache API y redirige acá con ?shared=1.
- * Si el SW no interceptó el POST (p. ej. lanzamiento en frío), el backend
- * lo deja pendiente y agrega ?token=... para recuperarlo por API (UC-054).
+ * el backend (POST /share-target, ver main.py) guarda el archivo con un
+ * token de un solo uso y redirige acá con ?shared=1&token=... para
+ * recuperarlo por API (UC-054). El service worker ya no intercepta ese
+ * POST (bug conocido de Chrome/Android que entrega el body vacío al SW);
+ * retrieveSharedFile() se deja como fallback defensivo por si algún
+ * navegador sí llega a dejarlo en Cache API.
  * También funciona como deep link directo (formulario vacío).
  */
 export function NuevaTransferenciaPage() {
@@ -17,7 +20,6 @@ export function NuevaTransferenciaPage() {
     const [searchParams] = useSearchParams()
     const isShared = searchParams.get('shared') === '1'
     const pendingToken = searchParams.get('token')
-    const swDiag = searchParams.get('sw')
 
     const [sharedFile, setSharedFile] = useState<File | null>(null)
     const [retrieving, setRetrieving] = useState(isShared)
@@ -68,7 +70,6 @@ export function NuevaTransferenciaPage() {
                         {retrieveFailed && (
                             <p className="error">
                                 No pudimos recuperar el comprobante compartido automáticamente. Subilo manualmente abajo.
-                                {swDiag && <> (diagnóstico: <code>{swDiag}</code>)</>}
                             </p>
                         )}
                         <PurchaseForm

@@ -2,8 +2,10 @@ const SHARE_CACHE = 'shared-comprobante'
 const SHARE_KEY = '/shared-comprobante'
 
 /**
- * Recupera el comprobante que el service worker dejó en Cache API al
- * interceptar el POST del Web Share Target (ver public/sw.js).
+ * Recupera el comprobante que el service worker haya podido dejar en Cache
+ * API (ver public/sw.js). El SW ya no intercepta el POST del Web Share
+ * Target — esto queda como fallback defensivo; en la práctica el archivo
+ * llega vía token del backend (fetchPendingSharedComprobante(), UC-054).
  * Devuelve null si no hay archivo pendiente. Borra la entrada al leerla.
  */
 export async function retrieveSharedFile(): Promise<File | null> {
