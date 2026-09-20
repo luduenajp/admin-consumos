@@ -5,7 +5,7 @@ import logging
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -102,38 +102,48 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/share-target")
-    async def share_target_fallback(request: Request, file: UploadFile | None = File(None)) -> RedirectResponse:
+    async def share_target_fallback(request: Request) -> RedirectResponse:
         # El service worker no intercepta este POST (ver frontend/public/sw.js):
-        # en Android/Chrome el body de la navegación del share target no le
-        # llega de forma confiable al fetch handler del SW. Se maneja acá,
-        # guardando el archivo server-side con un token de un solo uso.
-        if file is not None and file.filename:
-            content = await file.read()
-            if content:
-                token = store_pending_share(
-                    content, file.filename, file.content_type or "application/octet-stream"
-                )
-                print(
-                    f"[share-target] OK file={file.filename!r} type={file.content_type!r} "
-                    f"size={len(content)}",
-                    flush=True,
-                )
-                return RedirectResponse(f"/nueva-transferencia?shared=1&token={token}", status_code=303)
+        # en Chrome/Android el archivo se pierde antes de llegar a la red (bug
+        # conocido de Chrome 153, ver SPEC.md UC-054). Acá se maneja el POST
+        # directamente. request.body() se llama primero (y se cachea) para
+        # poder loguear el raw body si el parser de multipart no encuentra
+        # partes, en vez de perder esa información.
+        body = await request.body()
+        content_type = request.headers.get("content-type", "")
 
-        # Diagnóstico temporal: no vino un archivo utilizable bajo el campo
-        # "file". Volcamos headers + el resto de los campos del form (si los
-        # hay) para ver qué mandó realmente el share sheet de Android.
-        form_parts = []
-        for key, value in (await request.form()).multi_items():
-            if hasattr(value, "filename"):
-                blob = await value.read()
-                form_parts.append(f"{key}=file({value.filename!r},{value.content_type!r},{len(blob)}b)")
-            else:
-                form_parts.append(f"{key}={value!r}")
+        content: bytes | None = None
+        filename = "comprobante"
+        file_content_type = "application/octet-stream"
+        try:
+            form = await request.form()
+            for key, value in form.multi_items():
+                if hasattr(value, "filename") and value.filename:
+                    content = await value.read()
+                    filename = value.filename
+                    file_content_type = value.content_type or file_content_type
+                    break
+        except Exception as exc:
+            print(f"[share-target] request.form() raised: {exc!r}", flush=True)
+
+        if content:
+            token = store_pending_share(content, filename, file_content_type)
+            print(
+                f"[share-target] OK file={filename!r} type={file_content_type!r} size={len(content)}",
+                flush=True,
+            )
+            return RedirectResponse(f"/nueva-transferencia?shared=1&token={token}", status_code=303)
+
+        # Diagnóstico temporal: el body tiene bytes (a veces cientos de KB)
+        # pero el parser de multipart no encontró ninguna parte. Volcamos
+        # content-type/length + una porción del raw body (inicio y fin, donde
+        # están los boundaries y headers de cada parte) para ver qué formato
+        # está mandando realmente el navegador.
+        head = body[:400]
+        tail = body[-200:] if len(body) > 400 else b""
         print(
-            f"[share-target] NO FILE. content-type={request.headers.get('content-type')!r} "
-            f"content-length={request.headers.get('content-length')!r} "
-            f"file-param={file!r} form=[{', '.join(form_parts)}]",
+            f"[share-target] NO FILE. content-type={content_type!r} body_len={len(body)} "
+            f"head={head!r} tail={tail!r}",
             flush=True,
         )
         return RedirectResponse("/nueva-transferencia", status_code=303)
