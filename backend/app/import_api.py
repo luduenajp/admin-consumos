@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlmodel import select
 
 from app.config import get_anthropic_api_key
-from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches, match_beneficiary
+from app.crud import auto_categorize_purchases, create_purchase, find_card_by_holder, find_existing_purchase_for_installment_import, list_import_batches, match_beneficiary, suggest_category
 from app.importers.comprobante_local import extract_from_image, extract_from_pdf
 from app.db import get_session
 from app.models import Card, CurrencyCode, ImportBatch, PaymentMethod
@@ -513,22 +513,27 @@ async def post_comprobante(file: UploadFile = File(...)) -> dict:
         except Exception:
             pass
 
-    # --- Match beneficiary ---
+    # --- Match beneficiary + suggest category ---
     matched = None
+    description = nombre
+    suggested_category = None
     with get_session() as session:
         result = match_beneficiary(session=session, name=nombre, cbu=cbu, cuit=cuit, alias=alias)
         if result:
             b, confidence = result
             matched = {"id": b.id, "name": b.name, "confidence": confidence}
+            description = b.name
+        suggested_category = suggest_category(session=session, description=description, cuit=cuit)
 
     return {
         "amount": monto,
         "date": fecha,
         "currency": moneda,
-        "description": matched["name"] if matched else nombre,
+        "description": description,
         "matched_beneficiary": matched,
         "extraction_source": extraction_source,
         "raw_extracted": {"nombre": nombre, "cbu": cbu, "cuit": cuit, "alias": alias},
+        "suggested_category": suggested_category,
     }
 
 

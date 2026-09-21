@@ -452,6 +452,7 @@ export interface ComprobanteExtraction {
     cuit: string | null
     alias: string | null
   }
+  suggested_category: string | null
 }
 
 export interface Service {

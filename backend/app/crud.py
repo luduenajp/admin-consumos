@@ -1733,6 +1733,36 @@ def auto_categorize_purchases(*, session: Session) -> int:
     return count
 
 
+def suggest_category(*, session: Session, description: str | None, cuit: str | None = None) -> str | None:
+    """
+    Suggest a category for a description/cuit using the same 3-tier
+    inference as auto_categorize_purchases (CUIT match, normalized
+    description match, keyword rules), without requiring an existing
+    Purchase row. Used to pre-fill category from comprobante extraction
+    (UC-053) before the purchase is created.
+    """
+    if not description and not cuit:
+        return None
+
+    cuil_map, desc_map = _build_inference_maps(session)
+
+    if cuit:
+        cuit_clean = _re.sub(r"-", "", cuit)
+        if cuit_clean in cuil_map:
+            return cuil_map[cuit_clean]
+
+    if description:
+        norm = _normalize_desc_for_inference(description)
+        if norm in desc_map:
+            return desc_map[norm]
+        desc_upper = description.upper()
+        for cat_name, keywords in _KEYWORD_RULES:
+            if any(k.upper() in desc_upper for k in keywords):
+                return cat_name
+
+    return None
+
+
 def get_categorization_rules(*, session: Session) -> dict:
     """
     Return the learned categorization rules derived from existing purchases,

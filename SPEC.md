@@ -871,8 +871,10 @@ This only suggests a value for the UI; it does not change how `create_purchase` 
   1. Validate content type; reject unsupported → `400`
   2. Send file to Claude Vision API (`ANTHROPIC_API_KEY`) for extraction
   3. Match extracted nombre/CBU/CUIT/alias against `Beneficiary` table (exact/fuzzy)
-- **Result:** `200` → `ComprobanteExtraction { amount, date, currency, description, matched_beneficiary, raw_extracted { nombre, cbu, cuit, alias } }`
+  4. Suggest a category via `crud.suggest_category` (same 3-tier inference as `auto_categorize_purchases` — BR-XXX below — applied to the matched beneficiary name/extracted nombre and CUIT, without requiring an existing `Purchase` row)
+- **Result:** `200` → `ComprobanteExtraction { amount, date, currency, description, matched_beneficiary, raw_extracted { nombre, cbu, cuit, alias }, suggested_category }`
 - **Notes:** The file is not persisted. No purchase is created — the frontend pre-fills `PurchaseForm` and the user confirms manually.
+- **Frontend defaults on successful parse** (`PurchaseForm.tsx`, any comprobante upload — manual file picker or `initialFile` from UC-054): `owner_person_id` defaults to the person named "Pablo" (case-insensitive match against `/api/people`, retried once `people` finishes loading if it wasn't ready yet), `is_common` defaults to `true` (50/50 shared expense), and `category` is pre-filled from `suggested_category` when present. All three remain freely editable before saving (confirm-before-save, same as the other autofilled fields).
 
 ### UC-054: Compartir Comprobante desde Android (Web Share Target)
 

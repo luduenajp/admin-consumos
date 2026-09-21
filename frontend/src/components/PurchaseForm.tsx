@@ -62,6 +62,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }
     const [autofilled, setAutofilled] = useState<Set<string>>(new Set())
     const [saveBeneficiaryStatus, setSaveBeneficiaryStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
     const [previewName, setPreviewName] = useState<string | null>(null)
+    const [awaitingDefaultOwner, setAwaitingDefaultOwner] = useState(false)
 
     const { data: people = [] } = useQuery({ queryKey: ['people'], queryFn: fetchPeople })
     const { data: cards = [] } = useQuery({ queryKey: ['cards'], queryFn: fetchCards })
@@ -165,12 +166,42 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }
                 setFormData(prev => ({ ...prev, description: autoDesc }))
                 filled.add('description')
             }
+            if (result.suggested_category) {
+                setFormData(prev => ({ ...prev, category: result.suggested_category! }))
+                filled.add('category')
+            }
+
+            // Un comprobante subido/compartido es, por defecto, pagado por
+            // Pablo y un gasto común 50/50 — el caso más frecuente. El
+            // usuario puede corregirlo manualmente si no aplica.
+            const defaultPayer = people.find(p => p.name.toLowerCase().includes('pablo'))
+            if (defaultPayer) {
+                setFormData(prev => ({ ...prev, owner_person_id: String(defaultPayer.id) }))
+                filled.add('owner_person_id')
+            } else {
+                // `people` puede no haber cargado todavía (p. ej. al recibir
+                // un comprobante compartido apenas se monta el formulario):
+                // reintentar en cuanto la lista esté disponible.
+                setAwaitingDefaultOwner(true)
+            }
+            setFormData(prev => ({ ...prev, is_common: true }))
+            filled.add('is_common')
 
             setAutofilled(filled)
         } catch {
             setParseStatus('error')
         }
     }
+
+    useEffect(() => {
+        if (!awaitingDefaultOwner || people.length === 0) return
+        const defaultPayer = people.find(p => p.name.toLowerCase().includes('pablo'))
+        if (defaultPayer) {
+            setFormData(prev => ({ ...prev, owner_person_id: String(defaultPayer.id) }))
+            setAutofilled(prev => new Set(prev).add('owner_person_id'))
+        }
+        setAwaitingDefaultOwner(false)
+    }, [awaitingDefaultOwner, people])
 
     // Ref guard: StrictMode duplica los effects en dev y el parseo llama a la
     // API de Claude Vision (billable) — debe ejecutarse una sola vez.
@@ -359,7 +390,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }
                 </div>
 
                 <div className="formRow">
-                    <label className="label">Pagado por</label>
+                    <label className="label">Pagado por<AutoBadge field="owner_person_id" /></label>
                     <select
                         className="input"
                         value={formData.owner_person_id}
@@ -467,7 +498,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }
                 </div>
 
                 <div className="formRow">
-                    <label className="label">Categoría</label>
+                    <label className="label">Categoría<AutoBadge field="category" /></label>
                     <select
                         className="input"
                         value={formData.category}
@@ -575,7 +606,7 @@ export function PurchaseForm({ onSuccess, onCancel, initialValues, initialFile }
                         checked={formData.is_common}
                         onChange={(e) => setFormData({ ...formData, is_common: e.target.checked })}
                     />
-                    <label htmlFor="is_common" className="label" style={{ margin: 0 }}>Es un gasto común (se reparte 50/50)</label>
+                    <label htmlFor="is_common" className="label" style={{ margin: 0 }}>Es un gasto común (se reparte 50/50)<AutoBadge field="is_common" /></label>
                 </div>
             </div>
 

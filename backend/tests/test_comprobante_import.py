@@ -75,6 +75,19 @@ class TestComprobanteEndpoint:
         assert body["matched_beneficiary"]["confidence"] == "exact"
         assert body["matched_beneficiary"]["name"] == "Lopez Maria"
 
+    def test_response_includes_suggested_category(self, client):
+        claude_json = '{"monto": 4500.0, "fecha": "2026-06-07", "moneda": "ARS", "destinatario": {"nombre": "COTO CICSA", "cbu": null, "cuit": null, "alias": null}}'
+        mock_resp = self._make_claude_response(claude_json)
+
+        with patch("app.import_api.get_anthropic_api_key", return_value="sk-test"), \
+             patch("anthropic.Anthropic") as MockClient:
+            MockClient.return_value.messages.create.return_value = mock_resp
+            data = {"file": ("test.png", BytesIO(b"fake_image"), "image/png")}
+            resp = client.post("/api/import/comprobante", files=data)
+
+        assert resp.status_code == 200
+        assert resp.json()["suggested_category"] == "SUPERMERCADO"
+
     def test_claude_error_falls_back_to_local(self, client):
         # Claude raises an exception → local extraction is tried → 200 with empty fields on fake image
         with patch("app.import_api.get_anthropic_api_key", return_value="sk-test"), \

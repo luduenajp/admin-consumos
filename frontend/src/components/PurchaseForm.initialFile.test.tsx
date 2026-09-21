@@ -9,9 +9,12 @@ import type { ComprobanteExtraction } from '../api/types'
 
 vi.mock('../api/endpoints', () => ({
     fetchCards: vi.fn().mockResolvedValue([]),
-    fetchPeople: vi.fn().mockResolvedValue([]),
+    fetchPeople: vi.fn().mockResolvedValue([
+        { id: 1, name: 'Pablo' },
+        { id: 2, name: 'Cintia' },
+    ]),
     fetchDebtors: vi.fn().mockResolvedValue([]),
-    fetchCategories: vi.fn().mockResolvedValue([]),
+    fetchCategories: vi.fn().mockResolvedValue([{ id: 1, name: 'SUPERMERCADO', color: '#000000' }]),
     fetchSuggestMonth: vi.fn().mockResolvedValue({ suggested_month: '2026-06' }),
     createPurchase: vi.fn(),
     createBeneficiary: vi.fn(),
@@ -25,6 +28,7 @@ const extraction: ComprobanteExtraction = {
     description: 'Transferencia',
     matched_beneficiary: { id: 1, name: 'Juan Perez', confidence: 'exact' },
     raw_extracted: { nombre: 'Juan Perez', cbu: null, cuit: null, alias: null },
+    suggested_category: 'SUPERMERCADO',
 }
 
 function renderForm(initialFile?: File) {
@@ -69,5 +73,15 @@ describe('PurchaseForm initialFile', () => {
         renderForm()
         await new Promise((r) => setTimeout(r, 50))
         expect(uploadComprobante).not.toHaveBeenCalled()
+    })
+
+    it('defaults owner to Pablo, marks it as a common expense, and applies the suggested category', async () => {
+        renderForm(new File(['img'], 'comprobante.png', { type: 'image/png' }))
+
+        await waitFor(() => {
+            expect(screen.getByDisplayValue('Pablo')).toBeInTheDocument()
+            expect(screen.getByDisplayValue('SUPERMERCADO')).toBeInTheDocument()
+            expect(screen.getByLabelText(/Es un gasto común/)).toBeChecked()
+        })
     })
 })

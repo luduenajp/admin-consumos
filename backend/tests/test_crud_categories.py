@@ -10,6 +10,7 @@ from app.crud import (
     create_purchase,
     delete_category,
     list_categories,
+    suggest_category,
     update_category,
 )
 from app.models import CurrencyCode, Purchase
@@ -132,3 +133,48 @@ class TestAutoCategorizePurchases:
 
         p = session.exec(select(Purchase)).first()
         assert p.category == "mi-categoria"
+
+
+class TestSuggestCategory:
+    """Used by the comprobante extraction flow (UC-053) to pre-fill category
+    before a purchase even exists, reusing the same inference as
+    auto_categorize_purchases."""
+
+    def test_suggests_via_keyword_rule(self, session):
+        assert suggest_category(session=session, description="COTO DIGITAL") == "SUPERMERCADO"
+
+    def test_suggests_via_learned_description(self, session, two_person_scenario):
+        s = two_person_scenario
+        create_purchase(
+            session=session,
+            payload=PurchaseCreate(
+                card_id=s["alice_card"].id,
+                purchase_date=date(2025, 1, 15),
+                description="JUAN PEREZ",
+                currency=CurrencyCode.ARS,
+                amount_original=5000,
+                category="Amigos",
+            ),
+        )
+        assert suggest_category(session=session, description="Juan Perez") == "Amigos"
+
+    def test_suggests_via_learned_cuit(self, session, two_person_scenario):
+        s = two_person_scenario
+        create_purchase(
+            session=session,
+            payload=PurchaseCreate(
+                card_id=s["alice_card"].id,
+                purchase_date=date(2025, 1, 15),
+                description="TRANSFERENCIA CUIT 20-12345678-9",
+                currency=CurrencyCode.ARS,
+                amount_original=5000,
+                category="Servicios",
+            ),
+        )
+        assert suggest_category(session=session, description="otra descripcion", cuit="20-12345678-9") == "Servicios"
+
+    def test_returns_none_when_nothing_matches(self, session):
+        assert suggest_category(session=session, description="ALGO TOTALMENTE DESCONOCIDO XYZ") is None
+
+    def test_returns_none_for_empty_input(self, session):
+        assert suggest_category(session=session, description=None, cuit=None) is None
